@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "byte_order": "little",
+  "orientation": "out_in",
+  "config": {
+    "layers": 1,
+    "width": 64,
+    "heads": 4,
+    "ffn": 128,
+    "window": 64,
+    "features": 32,
+    "epsilon": 1e-05
+  },
+  "mode": "mixed",
+  "resets": [
+    131
+  ],
+  "tensors": [
+    {
+      "name": "events",
+      "shape": [
+        201,
+        32
+      ],
+      "dtype": "float32",
+      "offset": 0,
+      "nbytes": 25728,
+      "sha256": "4159ff16cd993c842c90383687cccb6d59be287d94e01ba484862c16e69eeb2c"
+    },
+    {
+      "name": "scores",
+      "shape": [
+        201
+      ],
+      "dtype": "float32",
+      "offset": 25728,
+      "nbytes": 804,
+      "sha256": "407dcb6e31bf3ae0f030b63aa3837b3aaae83d630143d90afe0b0e3b6a441047"
+    },
+    {
+      "name": "hidden",
+      "shape": [
+        201,
+        1,
+        64
+      ],
+      "dtype": "float32",
+      "offset": 26532,
+      "nbytes": 51456,
+      "sha256": "483e60ec4a07b49a889a34d2d42b845039d3f08a71243b0f3ac4202564b02f16"
+    },
+    {
+      "name": "keys",
+      "shape": [
+        201,
+        1,
+        4,
+        64,
+        16
+      ],
+      "dtype": "float32",
+      "offset": 77988,
+      "nbytes": 3293184,
+      "sha256": "26aa94351c8735c8511549f352e415180da0abe25cea072539590a38f3cdd9fe"
+    },
+    {
+      "name": "values",
+      "shape": [
+        201,
+        1,
+        4,
+        64,
+        16
+      ],
+      "dtype": "float32",
+      "offset": 3371172,
+      "nbytes": 3293184,
+      "sha256": "b857a439eb2284426c56af4fefe9148f25de2beacc90afe55d26f18841e601e8"
+    }
+  ],
+  "sha256": "93012945a2630700f9b6f52846ccf22c697f5dc8e0e947498b24415ee506a471"
+}

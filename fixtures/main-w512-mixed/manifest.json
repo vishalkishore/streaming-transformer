@@ -1,0 +1,245 @@
+{
+  "version": 1,
+  "byte_order": "little",
+  "orientation": "out_in",
+  "config": {
+    "layers": 2,
+    "width": 128,
+    "heads": 4,
+    "ffn": 256,
+    "window": 512,
+    "features": 32,
+    "epsilon": 1e-05
+  },
+  "mode": "mixed",
+  "seed": 42,
+  "tensors": [
+    {
+      "name": "input",
+      "shape": [
+        128,
+        32
+      ],
+      "dtype": "float16",
+      "offset": 0,
+      "nbytes": 8192,
+      "sha256": "f2cceec17a99ce63871b76f1bfc8d01e865384c75bf44bdec44039b6626773ff"
+    },
+    {
+      "name": "layers.0.norm1",
+      "shape": [
+        128
+      ],
+      "dtype": "float16",
+      "offset": 8192,
+      "nbytes": 256,
+      "sha256": "94db0fae1410ff7a113dcd9c611d72ba28198e11f635941653c42ad3521be145"
+    },
+    {
+      "name": "layers.0.norm2",
+      "shape": [
+        128
+      ],
+      "dtype": "float16",
+      "offset": 8448,
+      "nbytes": 256,
+      "sha256": "94db0fae1410ff7a113dcd9c611d72ba28198e11f635941653c42ad3521be145"
+    },
+    {
+      "name": "layers.0.q",
+      "shape": [
+        128,
+        128
+      ],
+      "dtype": "float16",
+      "offset": 8704,
+      "nbytes": 32768,
+      "sha256": "1830e9f9d7f1fc29a9818c86111b313eb34f4697a51e34cc8208afdf71cb4ac9"
+    },
+    {
+      "name": "layers.0.k",
+      "shape": [
+        128,
+        128
+      ],
+      "dtype": "float16",
+      "offset": 41472,
+      "nbytes": 32768,
+      "sha256": "f07f4737f822051deba3c591128eb102e95a0f9a05018b9ce7c32fc0d6b1cc46"
+    },
+    {
+      "name": "layers.0.v",
+      "shape": [
+        128,
+        128
+      ],
+      "dtype": "float16",
+      "offset": 74240,
+      "nbytes": 32768,
+      "sha256": "77983cb7cbf9f11e9f0dac1a6a2fc2d5c220f8e046f6b7c52aa10280d5dc4ce5"
+    },
+    {
+      "name": "layers.0.out",
+      "shape": [
+        128,
+        128
+      ],
+      "dtype": "float16",
+      "offset": 107008,
+      "nbytes": 32768,
+      "sha256": "dd9640ba480186b339106f142fe25156025a6a7a45ceb06c2de9c0e9966abe8e"
+    },
+    {
+      "name": "layers.0.gate",
+      "shape": [
+        256,
+        128
+      ],
+      "dtype": "float16",
+      "offset": 139776,
+      "nbytes": 65536,
+      "sha256": "ce8d6aa7059fde4064a43b10352c266aa66882af27294a11c8e69137fc24c0fa"
+    },
+    {
+      "name": "layers.0.up",
+      "shape": [
+        256,
+        128
+      ],
+      "dtype": "float16",
+      "offset": 205312,
+      "nbytes": 65536,
+      "sha256": "379ab18b6280f09f3dbb2e314bba9fd864a18227f7dbf802b758ab4ddfeae8be"
+    },
+    {
+      "name": "layers.0.down",
+      "shape": [
+        128,
+        256
+      ],
+      "dtype": "float16",
+      "offset": 270848,
+      "nbytes": 65536,
+      "sha256": "820427abaeb82c5be6af77dd1a498be8d0ce8fb19495b47d62ba8e2e3872fbf0"
+    },
+    {
+      "name": "layers.1.norm1",
+      "shape": [
+        128
+      ],
+      "dtype": "float16",
+      "offset": 336384,
+      "nbytes": 256,
+      "sha256": "94db0fae1410ff7a113dcd9c611d72ba28198e11f635941653c42ad3521be145"
+    },
+    {
+      "name": "layers.1.norm2",
+      "shape": [
+        128
+      ],
+      "dtype": "float16",
+      "offset": 336640,
+      "nbytes": 256,
+      "sha256": "94db0fae1410ff7a113dcd9c611d72ba28198e11f635941653c42ad3521be145"
+    },
+    {
+      "name": "layers.1.q",
+      "shape": [
+        128,
+        128
+      ],
+      "dtype": "float16",
+      "offset": 336896,
+      "nbytes": 32768,
+      "sha256": "6b4f545a0c270896fd87da75e1640f0d73cb5e5fc4e1b61db16157ba44b2bf6b"
+    },
+    {
+      "name": "layers.1.k",
+      "shape": [
+        128,
+        128
+      ],
+      "dtype": "float16",
+      "offset": 369664,
+      "nbytes": 32768,
+      "sha256": "ab32628db7df4eed0094bc884a1123b488d93aae7590f9e3fc224de645aa4a2a"
+    },
+    {
+      "name": "layers.1.v",
+      "shape": [
+        128,
+        128
+      ],
+      "dtype": "float16",
+      "offset": 402432,
+      "nbytes": 32768,
+      "sha256": "5dac9c9a0e7cfe52c3767db0c63c85274d541653ba518c97abf100d43c02bff6"
+    },
+    {
+      "name": "layers.1.out",
+      "shape": [
+        128,
+        128
+      ],
+      "dtype": "float16",
+      "offset": 435200,
+      "nbytes": 32768,
+      "sha256": "f8a3baf5471716e82a3ae5a9d37515acd0e59c4cee064393c91696712778d2e6"
+    },
+    {
+      "name": "layers.1.gate",
+      "shape": [
+        256,
+        128
+      ],
+      "dtype": "float16",
+      "offset": 467968,
+      "nbytes": 65536,
+      "sha256": "90983d7e3c3cab15b3fa6c1779c4f684521f04b61142634344d4c35df626bc4d"
+    },
+    {
+      "name": "layers.1.up",
+      "shape": [
+        256,
+        128
+      ],
+      "dtype": "float16",
+      "offset": 533504,
+      "nbytes": 65536,
+      "sha256": "f967696611f8447f33a73912dfdb07df66ad6e01486806f48536d625f690553b"
+    },
+    {
+      "name": "layers.1.down",
+      "shape": [
+        128,
+        256
+      ],
+      "dtype": "float16",
+      "offset": 599040,
+      "nbytes": 65536,
+      "sha256": "9e468a4268da2d7d04e071fdbe291a48f3e30fb3d4a04263f7ad6493ec59a78b"
+    },
+    {
+      "name": "final_norm",
+      "shape": [
+        128
+      ],
+      "dtype": "float16",
+      "offset": 664576,
+      "nbytes": 256,
+      "sha256": "94db0fae1410ff7a113dcd9c611d72ba28198e11f635941653c42ad3521be145"
+    },
+    {
+      "name": "score",
+      "shape": [
+        1,
+        128
+      ],
+      "dtype": "float16",
+      "offset": 664832,
+      "nbytes": 256,
+      "sha256": "7fc5ff6fae284071a7bdd8f27e094c6162e674c9fb4c429db06eb94682247003"
+    }
+  ],
+  "sha256": "62aad7d50169bf4a9f9a343b953541b9328f1ba532f60cd7a61bc6b410216e3a"
+}

@@ -1,0 +1,148 @@
+{
+  "version": 1,
+  "byte_order": "little",
+  "orientation": "out_in",
+  "config": {
+    "layers": 1,
+    "width": 64,
+    "heads": 4,
+    "ffn": 128,
+    "window": 128,
+    "features": 32,
+    "epsilon": 1e-05
+  },
+  "mode": "fp32",
+  "seed": 42,
+  "tensors": [
+    {
+      "name": "input",
+      "shape": [
+        64,
+        32
+      ],
+      "dtype": "float32",
+      "offset": 0,
+      "nbytes": 8192,
+      "sha256": "aba7703ba930739a44f73a1414918a316dc24f5d16aef9434955bd22536a5e65"
+    },
+    {
+      "name": "layers.0.norm1",
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "offset": 8192,
+      "nbytes": 256,
+      "sha256": "2f20cd03c9cd392a406c56232b0ff93a15f6d6d7da79086bfa14f55d4a4031b0"
+    },
+    {
+      "name": "layers.0.norm2",
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "offset": 8448,
+      "nbytes": 256,
+      "sha256": "2f20cd03c9cd392a406c56232b0ff93a15f6d6d7da79086bfa14f55d4a4031b0"
+    },
+    {
+      "name": "layers.0.q",
+      "shape": [
+        64,
+        64
+      ],
+      "dtype": "float32",
+      "offset": 8704,
+      "nbytes": 16384,
+      "sha256": "0a8f42e0954c69aca7df359c8e4f3eb7f7f71058ec76161c1658fb9b5183c773"
+    },
+    {
+      "name": "layers.0.k",
+      "shape": [
+        64,
+        64
+      ],
+      "dtype": "float32",
+      "offset": 25088,
+      "nbytes": 16384,
+      "sha256": "bd2c3024e1c8883fe45386df94fe36d8e17ae009984e9f08e363981cd2adfb3b"
+    },
+    {
+      "name": "layers.0.v",
+      "shape": [
+        64,
+        64
+      ],
+      "dtype": "float32",
+      "offset": 41472,
+      "nbytes": 16384,
+      "sha256": "9fc05935cba8a9a400aa3500fbf3b3f6a047a59d393129f4a49813f255cae84f"
+    },
+    {
+      "name": "layers.0.out",
+      "shape": [
+        64,
+        64
+      ],
+      "dtype": "float32",
+      "offset": 57856,
+      "nbytes": 16384,
+      "sha256": "9e813ae16b8f4812f4754549d6cf9855dfd85c13049a9ef69dee5bb590c23554"
+    },
+    {
+      "name": "layers.0.gate",
+      "shape": [
+        128,
+        64
+      ],
+      "dtype": "float32",
+      "offset": 74240,
+      "nbytes": 32768,
+      "sha256": "0329f64081bc9bc3d2f2d841c2e6eca4b96325de86431f5870a2bf888a409ef3"
+    },
+    {
+      "name": "layers.0.up",
+      "shape": [
+        128,
+        64
+      ],
+      "dtype": "float32",
+      "offset": 107008,
+      "nbytes": 32768,
+      "sha256": "6b252a90804cf8e9c9379e2d15c23a8d62d658c0318c5875c2818419f54459dd"
+    },
+    {
+      "name": "layers.0.down",
+      "shape": [
+        64,
+        128
+      ],
+      "dtype": "float32",
+      "offset": 139776,
+      "nbytes": 32768,
+      "sha256": "88919a24c43f57cf5ec983c2c66415207bad25739c630f74b7ea056a2b560d24"
+    },
+    {
+      "name": "final_norm",
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "offset": 172544,
+      "nbytes": 256,
+      "sha256": "2f20cd03c9cd392a406c56232b0ff93a15f6d6d7da79086bfa14f55d4a4031b0"
+    },
+    {
+      "name": "score",
+      "shape": [
+        1,
+        64
+      ],
+      "dtype": "float32",
+      "offset": 172800,
+      "nbytes": 256,
+      "sha256": "f2badd2ff95404fc0cfeed9b7510ac3e6d3a5b15e1b5aea9b0a877abf2e20971"
+    }
+  ],
+  "sha256": "d1514d5eddf77dcf8bcf1ba97fe6e56e7a1e21941e40ff090c8ae75efc958722"
+}

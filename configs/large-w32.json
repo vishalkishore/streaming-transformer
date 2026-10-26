@@ -1,0 +1,9 @@
+{
+  "layers": 4,
+  "width": 256,
+  "heads": 8,
+  "ffn": 512,
+  "window": 32,
+  "features": 32,
+  "epsilon": 1e-05
+}

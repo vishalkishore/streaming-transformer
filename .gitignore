@@ -1,0 +1,11 @@
+.venv/
+.venv-*/
+results/
+build/
+__pycache__/
+.pytest_cache/
+*.pyc
+build-*/
+fixtures/main-*/expected/
+fixtures/large-*/expected/
+fixtures/small-w*/expected/
