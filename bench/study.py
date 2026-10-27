@@ -13,6 +13,24 @@ import datetime
 from pathlib import Path
 
 
+def locality(pid):
+    process = Path(f'/proc/{pid}')
+    try:
+        threads = []
+        for task in (process / 'task').iterdir():
+            status = (task / 'status').read_text().splitlines()
+            fields = {line.split(':', 1)[0]: line.split(':', 1)[1].strip() for line in status if ':' in line}
+            threads.append(dict(tid=int(task.name), name=fields.get('Name'),
+                                cpus_allowed_list=fields.get('Cpus_allowed_list'),
+                                mems_allowed_list=fields.get('Mems_allowed_list')))
+        return dict(status='observed', pid=pid, threads=threads,
+                    numa_maps=(process / 'numa_maps').read_text(),
+                    monotonic_ns=time.monotonic_ns(),
+                    interpretation='Observed mappings/affinity; allocation policies and helper-thread roles are not inferred')
+    except OSError as error:
+        return dict(status='unavailable', pid=pid, reason=str(error))
+
+
 def run(command, prefix, telemetry=True):
     prefix = Path(prefix)
     prefix.parent.mkdir(parents=True, exist_ok=True)
@@ -26,7 +44,14 @@ def run(command, prefix, telemetry=True):
     try:
         start_wall, start_monotonic = time.time_ns(), time.monotonic_ns()
         with Path(str(prefix) + '.log').open('w') as output:
-            result = subprocess.run(command, stdout=output, stderr=subprocess.STDOUT)
+            result = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT)
+            try:
+                result.wait(timeout=.2)
+                observed = dict(status='unavailable', reason='Process completed before locality sample', pid=result.pid)
+            except subprocess.TimeoutExpired:
+                observed = locality(result.pid)
+                result.wait()
+            Path(str(prefix) + '.locality.json').write_text(json.dumps(observed, indent=2))
         Path(str(prefix) + '.clock.json').write_text(json.dumps(dict(
             start_wall_ns=start_wall, start_monotonic_ns=start_monotonic,
             end_wall_ns=time.time_ns(), end_monotonic_ns=time.monotonic_ns(),

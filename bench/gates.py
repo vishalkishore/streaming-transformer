@@ -142,8 +142,15 @@ def check_native_gate(path, executable_hash):
             raise RuntimeError(f'Mislabeled gate evidence: {row["name"]}')
         if not stress and count != 3 * config['window'] + 9:
             raise RuntimeError(f'Fixture coverage is incomplete: {row["name"]}')
-        if stress and (option('--expected') != 'cpu' or option('--reset-every') != '10007'):
-            raise RuntimeError(f'Stress requires independent CPU checks and resets: {row["name"]}')
+        if stress:
+            source = option('--expected')
+            if source in [None, 'fixture', 'cpu'] or result.get('cpu_oracle_active', True) or option('--reset-every') != '10007':
+                raise RuntimeError(f'Stress requires a precomputed CPU oracle and resets: {row["name"]}')
+            manifest = json.loads((Path(source) / 'manifest.json').read_text())
+            if (manifest['format'] != 'stream-sparse-oracle-v1' or manifest['events'] != count
+                    or manifest['reset_every'] != 10007
+                    or result.get('expected_manifest_sha256') != file_hash(Path(source) / 'manifest.json')):
+                raise RuntimeError(f'Stored stress oracle differs from replay: {row["name"]}')
         for metric in ['scores', 'keys', 'values', 'hidden']:
             errors = result[metric]
             if errors['elements'] <= 0 or errors['failed'] or errors['nonfinite']:

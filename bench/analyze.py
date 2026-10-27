@@ -171,9 +171,10 @@ def main():
             start = kept['intended_ns'] if run['mode'] == 'scheduled' else kept['submit_ns']
             ordered = np.sort((kept['complete_ns'] - start) / 1000)
             axes.step(ordered, np.arange(1, len(ordered) + 1) / len(ordered),
-                      where='post', label=f'{prefix.name} (dropped {run["drop_fraction"]:.2%})')
+                      where='post', label=f'{prefix.parent.name}/{prefix.name} (dropped {run["drop_fraction"]:.2%})')
         axes.set(xlabel='Host latency (µs)', ylabel='Completed-event empirical CDF', xscale='log')
-        axes.legend(fontsize='small')
+        axes.set_title('Host latency' if all(run['final_sample_count'] for run in report) else 'Host latency — short diagnostics')
+        axes.legend(fontsize='x-small')
         figure.tight_layout()
         figure.savefig(args.output.with_suffix('.png'), dpi=180)
         plt.close(figure)

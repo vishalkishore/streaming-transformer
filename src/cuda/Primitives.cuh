@@ -84,6 +84,12 @@ namespace Stream::Cuda {
     }
     return value;
   }
+  __device__ inline float warp_max(float value){
+    for(int offset = 16; offset > 0; offset /= 2){
+      value = fmaxf(value, __shfl_down_sync(0xffffffff, value, offset));
+    }
+    return value;
+  }
 
   // Each warp owns an output row. Dot products always accumulate in FP32.
   __device__ inline void matvec(const Args& a, const void* weight, const float* input,
@@ -163,32 +169,41 @@ namespace Stream::Cuda {
         }
         break;
       case 7:
-        for(int h = global_thread(); h < a.c.heads; h += total_threads()){
+        // A warp owns a head. Coalesced slot scans replace three serial scans
+        // on one thread; every reduction remains FP32 with stable max subtraction.
+        for(int h = global_thread() / 32; h < a.c.heads; h += total_threads() / 32){
+          int lane = threadIdx.x % 32;
           float* logits = a.logits + h * a.c.window;
           float maximum = -INFINITY;
-          for(int j = 0; j < valid; j++){
+          for(int j = lane; j < valid; j += 32){
             maximum = fmaxf(maximum, logits[j]);
           }
+          maximum = __shfl_sync(0xffffffff, warp_max(maximum), 0);
           float total = 0;
-          for(int j = 0; j < valid; j++){
+          for(int j = lane; j < valid; j += 32){
             logits[j] = expf(logits[j] - maximum);
             total += logits[j];
           }
-          for(int j = 0; j < valid; j++){
+          total = __shfl_sync(0xffffffff, warp_sum(total), 0);
+          for(int j = lane; j < valid; j += 32){
             logits[j] /= total;
           }
         }
         break;
       case 8:
-        for(int i = global_thread(); i < width; i += total_threads()){
+        // A warp owns an output coordinate and partitions history positions.
+        // This distributes long-history work beyond the first width threads.
+        for(int i = global_thread() / 32; i < width; i += total_threads() / 32){
+          int lane = threadIdx.x % 32;
           int h = i / dim;
           float sum = 0;
-          for(int j = 0; j < valid; j++){
+          for(int j = lane; j < valid; j += 32){
             int slot = (t + 1 - valid + j) % a.c.window;
             int base = ((l * a.c.heads + h) * a.c.window + slot) * dim;
             sum += a.logits[h * a.c.window + j] * load_value(a.values, base + i % dim, a.mixed);
           }
-          a.attention[i] = cast_value(sum, a.mixed);
+          sum = warp_sum(sum);
+          if(lane == 0){ a.attention[i] = cast_value(sum, a.mixed); }
         }
         break;
       case 9: matvec(a, w.out, a.attention, a.temp, width, width); break;

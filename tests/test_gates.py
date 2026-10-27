@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from bench.gates import check_native_gate, check_followup_gate
+from bench.provenance import file_hash
 
 
 @pytest.fixture
@@ -26,10 +27,16 @@ def evidence(tmp_path):
         prefix = tmp_path / name
         command = ['synthetic-bench', '--events', str(count), '--output', str(prefix)]
         if stress:
-            command += ['--expected', 'cpu', '--reset-every', '10007']
+            oracle = tmp_path / f'oracle-{mode}'
+            oracle.mkdir(exist_ok=True)
+            (oracle / 'manifest.json').write_text(json.dumps(dict(
+                format='stream-sparse-oracle-v1', events=count, reset_every=10007)))
+            command += ['--expected', str(oracle), '--reset-every', '10007']
         result = dict(provenance=dict(executable_sha256='test-hash'), mode='correctness',
                       dropped=0, completed=count, config=config, precision=mode,
                       backend=backend, blocks=blocks)
+        if stress:
+            result.update(cpu_oracle_active=False, expected_manifest_sha256=file_hash(oracle / 'manifest.json'))
         for metric in ['scores', 'keys', 'values', 'hidden']:
             result[metric] = dict(elements=1, failed=0, nonfinite=0)
         Path(str(prefix) + '.json').write_text(json.dumps(result))

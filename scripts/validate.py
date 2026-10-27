@@ -21,6 +21,7 @@ def main():
     p.add_argument('--sizes', nargs='+', default=['small', 'main'])
     p.add_argument('--output', default='results/validation')
     p.add_argument('--stress', type=int, default=0)
+    p.add_argument('--oracle-binary', default=None)
     p.add_argument('--backends', nargs='+', choices=['cpu', 'cuda', 'cublas', 'graph', 'cublas-graph', 'fused', 'persistent'],
                    default=['cpu', 'cuda', 'cublas', 'graph', 'cublas-graph', 'fused', 'persistent'])
     a = p.parse_args()
@@ -51,11 +52,19 @@ def main():
         print('Stress skipped: fixture correctness gate failed.', flush=True)
     elif a.stress:
         for mode in ['fp32', 'mixed']:
+            oracle = output / f'main-{mode}-cpu-oracle'
+            oracle_binary = a.oracle_binary or str(Path(a.binary).with_name('stream-oracle'))
+            command = [oracle_binary, '--weights', f'fixtures/main-{mode}', '--events', str(a.stress),
+                       '--reset-every', '10007', '--snapshot-every', '4096', '--output', str(oracle)]
+            rc = run(command, output / f'main-{mode}-cpu-oracle.log')
+            if rc:
+                raise RuntimeError(f'CPU oracle generation failed: {oracle}')
+            print(f'main-{mode}: CPU reference generated once; GPU replays use stored results', flush=True)
             for blocks in [1, 4]:
                 name = f'main-{mode}-stress-{blocks}'
                 command = [a.binary, '--config', 'configs/main.json', '--weights', f'fixtures/main-{mode}',
                            '--backend', 'persistent', '--blocks', str(blocks), '--mode', 'correctness',
-                           '--expected', 'cpu', '--events', str(a.stress), '--reset-every', '10007',
+                           '--expected', str(oracle), '--events', str(a.stress), '--reset-every', '10007',
                            '--output', str(output / name)]
                 rc = run(command, output / f'{name}.log')
                 report.append(dict(name=name, returncode=rc, command=command))

@@ -61,11 +61,18 @@ def main():
         events.tofile(trace)
         # Random fixture runs already test every backend and all state snapshots.
         if kind != 'random' and not a.reference_only:
+            stored_oracle = a.output / f'{size}-{mode}-{kind}-cpu-oracle'
+            oracle_command = [str(Path(a.binary).with_name('stream-oracle')), '--weights', f'fixtures/{size}-{mode}',
+                              '--trace', str(trace), '--events', str(len(events)), '--reset-every', str(reset),
+                              '--snapshot-every', '1', '--output', str(stored_oracle)]
+            with (a.output / f'{size}-{mode}-{kind}-cpu-oracle.log').open('w') as out:
+                subprocess.run(oracle_command, stdout=out, stderr=subprocess.STDOUT, check=True)
+            row['cpu_oracle_command'] = oracle_command
             for backend, blocks in [('cuda', 4), ('cublas', 4), ('persistent', 1), ('persistent', 4)]:
                 prefix = a.output / f'{size}-{mode}-{kind}-{backend}-{blocks}'
                 command = [a.binary, '--config', f'configs/{size}.json', '--weights', f'fixtures/{size}-{mode}',
                            '--trace', str(trace), '--backend', backend, '--blocks', str(blocks),
-                           '--mode', 'correctness', '--expected', 'cpu', '--events', str(len(events)),
+                           '--mode', 'correctness', '--expected', str(stored_oracle), '--events', str(len(events)),
                            '--reset-every', str(reset), '--output', str(prefix)]
                 with Path(str(prefix) + '.log').open('w') as out:
                     rc = subprocess.run(command, stdout=out, stderr=subprocess.STDOUT).returncode

@@ -136,10 +136,10 @@ class Study:
                 extra += ['--' + key, str(choice[key])]
         return selected, extra
 
-    def tune(self):
+    def tune(self, sizes=None, modes=None):
         probe = read('results/blackwell-hardware.json')
         grids = sorted(set([1, 4, 8, 16, probe['sm_count']]))
-        for size, mode in itertools.product(self.a.sizes, self.a.modes):
+        for size, mode in itertools.product(sizes or self.a.sizes, modes or self.a.modes):
             candidates = []
             for backend, block, transport in itertools.product(['graph', 'cublas-graph'], grids, ['copy', 'mapped']):
                 candidates.append(dict(group='graph', backend=backend, blocks=block, transport=transport))
@@ -152,6 +152,13 @@ class Study:
             for block in grids:
                 if block <= legal:
                     candidates.append(dict(group='persistent', backend='persistent', blocks=block))
+            config = read(f'configs/{size}.json')
+            for candidate in candidates:
+                extra = [v for key, value in candidate.items() if key not in ['group', 'backend']
+                         for v in ['--' + key, str(value)]]
+                label = f'tune-correctness-{size}-{mode}-' + '-'.join(str(v) for v in candidate.values())
+                self.execute(label, size, mode, candidate['backend'], 0,
+                             extra + ['--mode', 'correctness'], 3 * config['window'] + 9)
             measurements = {group: [] for group in ['cpu', 'graph', 'persistent']}
             for repeat in range(3):
                 order = candidates.copy()
@@ -246,7 +253,7 @@ class Study:
             fixture = Path(f'fixtures/{variant}-{mode}')
             if not (fixture / 'manifest.json').exists():
                 export(config_path, fixture, mode, count=3 * window + 9)
-            self.selection[f'{variant}-{mode}'] = self.selection[f'{size}-{mode}']
+            self.tune([variant], [mode])
             for repeat in range(self.a.runs):
                 order = ['cpu', 'graph', 'persistent']
                 random.Random(repeat).shuffle(order)

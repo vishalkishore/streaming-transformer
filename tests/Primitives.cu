@@ -49,6 +49,108 @@ namespace {
     }
   }
 
+  TEST(Primitives, WarpSoftmaxLengthsAndOffsets){
+    int devices = 0;
+    if(cudaGetDeviceCount(&devices) != cudaSuccess || devices == 0){ GTEST_SKIP() << "No CUDA GPU"; }
+    Args a{};
+    a.c = {1, 128, 4, 256, 512, 32, 1e-5f};
+    Buffer<float> logits(a.c.heads * a.c.window);
+    Buffer<std::uint64_t> position(1);
+    a.position = position.get();
+    a.logits = logits.get();
+    std::vector<float> input(logits.count()), output(logits.count());
+    for(int valid : {1, 2, 31, 32, 33, 63, 64, 65, 255, 256, 257, 511, 512}){
+      std::uint64_t t = valid - 1;
+      CUDA_CHECK(cudaMemcpy(position.get(), &t, sizeof(t), cudaMemcpyHostToDevice));
+      for(float offset : {-10000.0f, 0.0f, 10000.0f}){
+        std::fill(input.begin(), input.end(), 123456.0f);
+        for(int head = 0; head < a.c.heads; head++){
+          for(int j = 0; j < valid; j++){
+            input[head * a.c.window + j] = offset + std::sin(float(j * 3 + head)) * 7;
+          }
+        }
+        for(int blocks : {1, 4, 110}){
+          CUDA_CHECK(cudaMemcpy(logits.get(), input.data(), input.size() * sizeof(float), cudaMemcpyHostToDevice));
+          primitive_kernel<<<blocks, 128>>>(a, 7);
+          CUDA_CHECK(cudaGetLastError());
+          CUDA_CHECK(cudaDeviceSynchronize());
+          CUDA_CHECK(cudaMemcpy(output.data(), logits.get(), output.size() * sizeof(float), cudaMemcpyDeviceToHost));
+          for(int head = 0; head < a.c.heads; head++){
+            const float* source = input.data() + head * a.c.window;
+            double maximum = *std::max_element(source, source + valid), total = 0, actualTotal = 0;
+            for(int j = 0; j < valid; j++){ total += std::exp(double(source[j]) - maximum); }
+            for(int j = 0; j < valid; j++){
+              double expected = std::exp(double(source[j]) - maximum) / total;
+              float actual = output[head * a.c.window + j];
+              ASSERT_NEAR(actual, expected, 1e-6) << "valid=" << valid << " blocks=" << blocks;
+              actualTotal += actual;
+            }
+            ASSERT_NEAR(actualTotal, 1.0, 1e-6);
+            for(int j = valid; j < a.c.window; j++){
+              ASSERT_EQ(output[head * a.c.window + j], source[j]);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  TEST(Primitives, ParallelValuesWrapAndLengths){
+    int devices = 0;
+    if(cudaGetDeviceCount(&devices) != cudaSuccess || devices == 0){ GTEST_SKIP() << "No CUDA GPU"; }
+    Args a{};
+    a.c = {1, 128, 4, 256, 512, 32, 1e-5f};
+    Buffer<float> logits(4 * 512), attention(128);
+    Buffer<std::uint64_t> position(1);
+    a.position = position.get();
+    a.logits = logits.get();
+    a.attention = attention.get();
+    std::vector<float> probabilities(4 * 512), cache(128 * 512), output(128);
+    for(bool mixed : {false, true}){
+      a.mixed = mixed;
+      Buffer<char> values(cache.size() * (mixed ? 2 : 4));
+      a.values = values.get();
+      for(std::size_t i = 0; i < cache.size(); i++){
+        float value = std::sin(float(i) * .13f);
+        cache[i] = mixed ? roundHalf(value) : value;
+      }
+      if(mixed){
+        std::vector<__half> half(cache.size());
+        for(std::size_t i = 0; i < cache.size(); i++){ half[i] = __float2half(cache[i]); }
+        CUDA_CHECK(cudaMemcpy(values.get(), half.data(), half.size() * 2, cudaMemcpyHostToDevice));
+      }else{
+        CUDA_CHECK(cudaMemcpy(values.get(), cache.data(), cache.size() * 4, cudaMemcpyHostToDevice));
+      }
+      for(std::uint64_t t : {0ULL, 30ULL, 31ULL, 32ULL, 254ULL, 255ULL, 256ULL, 510ULL, 511ULL, 512ULL, 1027ULL, 10007ULL}){
+        int valid = int(std::min<std::uint64_t>(t + 1, 512));
+        CUDA_CHECK(cudaMemcpy(position.get(), &t, sizeof(t), cudaMemcpyHostToDevice));
+        std::fill(probabilities.begin(), probabilities.end(), 0);
+        for(int head = 0; head < 4; head++){
+          for(int j = 0; j < valid; j++){
+            probabilities[head * 512 + j] = float(j + 1) / (valid * (valid + 1) / 2.0f);
+          }
+        }
+        CUDA_CHECK(cudaMemcpy(logits.get(), probabilities.data(), probabilities.size() * 4, cudaMemcpyHostToDevice));
+        for(int blocks : {1, 4, 110}){
+          primitive_kernel<<<blocks, 128>>>(a, 8);
+          CUDA_CHECK(cudaGetLastError());
+          CUDA_CHECK(cudaDeviceSynchronize());
+          CUDA_CHECK(cudaMemcpy(output.data(), attention.get(), output.size() * 4, cudaMemcpyDeviceToHost));
+          for(int i = 0; i < 128; i++){
+            double expected = 0;
+            for(int j = 0; j < valid; j++){
+              int slot = (t + 1 - valid + j) % 512;
+              expected += double(probabilities[(i / 32) * 512 + j]) * cache[((i / 32) * 512 + slot) * 32 + i % 32];
+            }
+            float reference = mixed ? roundHalf(expected) : float(expected);
+            ASSERT_NEAR(output[i], reference, (mixed ? .002 : 1e-5) + (mixed ? .02 : 1e-4) * std::abs(reference))
+              << "position=" << t << " blocks=" << blocks << " mixed=" << mixed;
+          }
+        }
+      }
+    }
+  }
+
   TEST(Primitives, Fp32AndMixed){
     int devices = 0;
     if(cudaGetDeviceCount(&devices) != cudaSuccess || devices == 0){ GTEST_SKIP() << "No CUDA GPU"; }

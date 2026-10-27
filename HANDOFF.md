@@ -1,5 +1,49 @@
 # Project handoff — updated 27 October 2026
 
+## Latest steering — CPU once, short GPU experiments first
+
+The user explicitly stopped the old million-command run and its waiting
+supervisor. PIDs 58099/57248/60274 are no longer active. Interrupted logs are
+preserved; no million-command completion is claimed. Do not restart that old
+CPU-per-event workflow. `results/stopped-validation-user-request.json` records
+the stop. A CPU-only `stream-oracle` now exports all scores and sparse full-state
+snapshots once per precision/trace. GPU replays use `--expected ORACLE_DIRECTORY`
+without constructing a CPU model. `scripts/validate.py` and adversarial validation
+reuse those stored results, with archive/config/checkpoint/trace/reset identity
+checks and correctness progress every 10,000 events.
+
+The stored-oracle bounded regression passed independent reference agreement,
+three GPU replays per precision and four invalid-oracle rejections per precision
+(`results/stored-oracle-regression`). Python tests pass 44 cases. The user then
+requested 1k/10k experiments before long stress. `scripts/quick_bench.py` runs
+Main FP32 serially, measuring CPU only once; `--skip-cpu` reuses that baseline.
+No million-command rerun has been started.
+
+GPU softmax now uses a warp per head; attention-value accumulation uses a warp
+per output coordinate and distributes history across lanes. These change FP32
+reduction order, so the earlier 54/54 matrix is historical evidence for the
+previous binary, not full acceptance of the new binary. The new Main FP32/mixed
+graph/cuBLAS-graph/persistent one/four-block matrix passed 8/8. New primitive tests
+cover ragged softmax lengths, large logit offsets, history lengths and wrapped
+value slots across one/four/110 blocks. Check the final CTest log and fresh full
+matrix before broadening correctness claims.
+
+Short default-clock, affinity-pinned Main FP32 results (single runs; not final
+repeated evidence): initial persistent110 10k p99 707.41 us, after warp softmax
+590.58 us, after parallel values 236.56 us. Tested cuBLAS graph4 changed from
+877.42 to 764.02 to 529.16 us. CPU was measured once at 1k p99 38.89 us and still
+wins this configuration. Raw records: `results/quick-main*`. One-block persistent
+did not improve with the value-work distribution; preserve that losing result.
+The graph baseline is not yet fully tuned, and different-time runs need repeated
+controls before final improvement claims.
+
+The source snapshot is public at https://github.com/vishalkishore/streaming-transformer,
+with published main `e8ecd375fc9c6e7e88ad817f8f93839da3b14ebe`. Current local changes
+after publication are not yet pushed. Initial local commit remains on
+`local-initial-snapshot`. Research references and applicability limits are in
+`docs/ImplementationReferences.md`. The older active section below describes
+superseded jobs and numerical checks; this section takes precedence.
+
 ## Active continuation — numerical acceptance before final studies
 
 The full objective remains active. Small/Main/Large fixtures and all 32/64/128/256/512 window variants now exist. A separate uv-managed `.venv-gpu` contains Torch 2.14.1+cu130 with SM120 support; `.venv` retains the Torch 2.6.0 CPU oracle. `bench/torch_bench.py` implements eager, Inductor and explicit CUDA Graph comparisons with device-held positions and persistent KV state. Its final full correctness matrix and performance studies are not yet complete.

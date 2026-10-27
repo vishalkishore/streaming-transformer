@@ -90,6 +90,13 @@ namespace {
           if(tensor.at("dtype") != "float32" || offset > mData.size() || bytes > mData.size() - offset){ throw std::runtime_error("Invalid expected tensor"); }
           mOffsets.emplace(tensor.at("name").get<std::string>(), std::make_pair(offset, bytes / 4));
         }
+        if(mManifest.contains("state_events")){
+          mStateEvents = mManifest.at("state_events").get<std::vector<std::size_t>>();
+          if(mStateEvents.empty() || mStateEvents.front() != 0 || !std::is_sorted(mStateEvents.begin(), mStateEvents.end()) ||
+             std::adjacent_find(mStateEvents.begin(), mStateEvents.end()) != mStateEvents.end()){
+            throw std::runtime_error("Invalid sparse oracle state indices");
+          }
+        }
         if(sha256(mData.data(), mData.size()) != mManifest.at("sha256").get<std::string>()){
           throw std::runtime_error("Expected fixture hash mismatch");
         }
@@ -106,9 +113,27 @@ namespace {
         if(index > count || output.size() > count - index){ throw std::runtime_error("Expected range out of bounds"); }
         std::memcpy(output.data(), mData.data() + offset + sizeof(float) * index, output.size_bytes());
       }
+      bool hasState(std::size_t event) const{
+        return mStateEvents.empty() || std::binary_search(mStateEvents.begin(), mStateEvents.end(), event);
+      }
+      std::size_t stateRow(std::size_t event) const{
+        if(mStateEvents.empty()){ return event; }
+        auto found = std::lower_bound(mStateEvents.begin(), mStateEvents.end(), event);
+        if(found == mStateEvents.end() || *found != event){ throw std::runtime_error("Missing sparse oracle snapshot"); }
+        return found - mStateEvents.begin();
+      }
+      void validateSparse(const Model& model, std::size_t count, int resetEvery, const std::string& traceHash) const{
+        if(mManifest.at("format") != "stream-sparse-oracle-v1" || mManifest.at("events") != count ||
+           mManifest.at("reset_every") != resetEvery || mManifest.at("config") != model.manifest.at("config") ||
+           mManifest.at("mode") != model.manifest.at("mode") || mManifest.at("checkpoint_sha256") != model.manifest.at("sha256") ||
+           mManifest.at("trace_sha256") != traceHash || mStateEvents.empty() || mStateEvents.back() != count - 1){
+          throw std::runtime_error("Sparse CPU oracle differs from requested GPU replay");
+        }
+      }
     private:
       Json mManifest;
       std::vector<char> mData;
+      std::vector<std::size_t> mStateEvents;
       std::map<std::string, std::pair<std::size_t, std::size_t>> mOffsets;
   };
 }
@@ -167,6 +192,7 @@ int main(int argc, char** argv){
     std::size_t traceCount = trace.size() / model.config.features;
     auto input = [&](std::size_t i){ return trace.data() + (i % traceCount) * model.config.features; };
     bool cpuOracle = mode == "correctness" && arg("expected", "fixture") == "cpu";
+    bool storedOracle = mode == "correctness" && arg("expected", "fixture") != "cpu" && arg("expected", "fixture") != "fixture";
     if(backend == "cpu" && cpuOracle){ throw std::runtime_error("CPU correctness requires an independent fixture"); }
     std::unique_ptr<Cpu> cpu;
     if(backend == "cpu" || cpuOracle){ cpu = std::make_unique<Cpu>(model, integer("threads", 1)); }
@@ -228,19 +254,24 @@ int main(int argc, char** argv){
     reset();
     if(cpu){ cpu->reset(); }
     std::set<std::size_t> resetIndices;
-    if(mode == "correctness" && arg("expected", "fixture") != "cpu" && std::filesystem::exists(weights / "resets.json")){
+    int resetEvery = integer("reset-every", 0);
+    if(mode == "correctness" && !cpuOracle && !storedOracle && std::filesystem::exists(weights / "resets.json")){
       for(auto index : loadJson(weights / "resets.json")){ resetIndices.insert(index.get<std::size_t>()); }
     }
     std::unique_ptr<Expected> expected;
     if(mode == "correctness" && arg("expected", "fixture") != "cpu"){
-      expected = std::make_unique<Expected>(weights / "expected");
-      if(count > traceCount){ throw std::runtime_error("Fixture correctness cannot exceed trace; use --expected cpu for stress"); }
+      std::filesystem::path expectedPath = storedOracle ? std::filesystem::path(arg("expected", "")) : weights / "expected";
+      expected = std::make_unique<Expected>(expectedPath);
+      if(storedOracle){ expected->validateSparse(model, count, resetEvery, metadata["trace_sha256"]); }
+      else if(count > traceCount){ throw std::runtime_error("Fixture correctness cannot exceed trace; use a stored CPU oracle for stress"); }
+      auto expectedManifest = readBytes(expectedPath / "manifest.json");
+      metadata["expected_manifest_sha256"] = sha256(expectedManifest.data(), expectedManifest.size());
     }
+    metadata["expected_source"] = arg("expected", "fixture");
     Errors scores, scoresRaw, keys, keysRaw, values, valuesRaw, hidden, hiddenRaw, hiddenRelative, cacheRelative, cacheHeadRelative;
     std::vector<Sample> samples(count);
     double startCpu = cpuSeconds(), startWall = now();
     std::size_t dropped = 0;
-    int resetEvery = integer("reset-every", 0);
     double idleUs = std::stod(arg("idle-us", "0"));
     if(mode == "scheduled"){
       double rate = std::stod(arg("rate", "1000"));
@@ -318,20 +349,21 @@ int main(int argc, char** argv){
           float oracle = expected ? expected->get("scores", i) : gpu ? cpu->step(input(i)) : s.score;
           scoresRaw.check(s.score, oracle, model.mixed);
           scores.check(s.score, oracle, model.mixed, model.config.layers);
-          bool fullCheck = expected || i % 4096 == 0 || i + 1 == count;
-          auto state = fullCheck ? (gpu ? gpu->snapshot() : Snapshot{cpu->getPosition(), cpu->getKeys(), cpu->getValues(), cpu->getHidden()}) : Snapshot{cpu->getPosition(), {}, {}, {}};
+          bool fullCheck = expected ? expected->hasState(i) : i % 4096 == 0 || i + 1 == count;
+          auto state = fullCheck ? (gpu ? gpu->snapshot() : Snapshot{cpu->getPosition(), cpu->getKeys(), cpu->getValues(), cpu->getHidden()}) : Snapshot{};
           std::uint64_t expectedPosition = i + 1;
           auto lastReset = resetIndices.upper_bound(i);
           if(lastReset != resetIndices.begin()){ expectedPosition -= *std::prev(lastReset); }
           if(resetEvery > 0){ expectedPosition = i % resetEvery + 1; }
-          if(state.position != expectedPosition){ throw std::runtime_error("Position drift"); }
+          if(fullCheck && state.position != expectedPosition){ throw std::runtime_error("Position drift"); }
           // Full state on fixture runs. CPU stress checks all scores and periodic cache snapshots.
-          if(expected || i % 4096 == 0 || i + 1 == count){
+          if(fullCheck){
+            std::size_t stateRow = expected ? expected->stateRow(i) : i;
             auto check = [&](const std::vector<float>& actual, const std::vector<float>& native,
                              const std::string& name, Errors& errors, Errors& raw){
               int dim = model.config.width / model.config.heads;
               std::vector<float> referenceData(actual.size());
-              if(expected){ expected->copy(name, i * actual.size(), referenceData); }
+              if(expected){ expected->copy(name, stateRow * actual.size(), referenceData); }
               else{ referenceData = native; }
               for(std::size_t base = 0; base < actual.size(); base += dim){
                 int layer = base / (model.config.width * model.config.window);
@@ -356,7 +388,7 @@ int main(int argc, char** argv){
             check(state.keys, cpu ? cpu->getKeys() : unused, "keys", keys, keysRaw);
             check(state.values, cpu ? cpu->getValues() : unused, "values", values, valuesRaw);
             std::vector<float> referenceHidden(state.hidden.size());
-            if(expected){ expected->copy("hidden", i * referenceHidden.size(), referenceHidden); }
+            if(expected){ expected->copy("hidden", stateRow * referenceHidden.size(), referenceHidden); }
             else{ referenceHidden = cpu->getHidden(); }
             for(int layer = 0; layer < model.config.layers; layer++){
               std::span<const float> actual(state.hidden.data() + layer * model.config.width, model.config.width);
@@ -369,6 +401,9 @@ int main(int argc, char** argv){
               if(model.mixed){ hiddenRelative.check(relativeL2(actual, reference), 0, true); }
             }
           }
+        }
+        if(mode == "correctness" && (i + 1) % 10000 == 0){
+          std::cerr << "Checked " << i + 1 << '/' << count << " RUN scores; CPU oracle active=" << cpuOracle << '\n';
         }
       }
     }
