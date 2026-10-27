@@ -10,6 +10,8 @@ namespace Stream {
     int blocks = 1;
     bool backoff = false;
     bool mapped = false;
+    bool vectorMatvec = false;
+    bool fusedAttention = false;
     std::uint64_t maxEvents = 0;
     // Allows bounded protocol recovery tests near exhaustion; STOP retains one sequence ID.
     std::uint64_t initialSequence = 0;

@@ -142,14 +142,14 @@ int main(int argc, char** argv){
   using namespace Stream;
   try{
     std::map<std::string, std::string> args;
-    const std::set<std::string> allowed{"config", "backend", "weights", "trace", "blocks", "max-events", "events", "warmup", "mode", "output", "transport", "backoff", "idle-seconds", "threads", "rate", "bursty", "queue", "deadline-us", "worker-core", "producer-core", "reset-every", "clock-regime", "expected", "idle-us"};
+    const std::set<std::string> allowed{"config", "backend", "weights", "trace", "blocks", "max-events", "events", "warmup", "mode", "output", "transport", "backoff", "matvec", "attention", "idle-seconds", "threads", "rate", "bursty", "queue", "deadline-us", "worker-core", "producer-core", "reset-every", "clock-regime", "expected", "idle-us"};
     for(int i = 1; i < argc; i += 2){
       std::string key = argv[i];
       if(key == "--help"){
         std::cout << "stream-bench --config configs/main.json --weights fixtures/main-fp32 --trace fixtures/main-fp32/trace.bin\n"
                      "  --backend cpu|cuda|cublas|graph|cublas-graph|fused|persistent\n"
                      "  --mode correctness|service|scheduled|device|ping-pong|empty|empty-graph|copy|gpu-ping\n"
-                     "  --events N --warmup N --blocks N --transport copy|mapped --backoff 0|1\n"
+                     "  --events N --warmup N --blocks N --transport copy|mapped --backoff 0|1 --matvec scalar|vector --attention staged|fused\n"
                      "  --rate events_per_second --bursty 0|1 --queue N --output prefix\n";
         return 0;
       }
@@ -207,6 +207,12 @@ int main(int argc, char** argv){
       options.maxEvents = std::stoull(arg("max-events", "0"));
       options.idleSeconds = std::stod(arg("idle-seconds", "30"));
       options.backoff = integer("backoff", 0);
+      auto matvec = arg("matvec", "scalar");
+      if(matvec != "scalar" && matvec != "vector"){ throw std::runtime_error("Unknown matvec implementation"); }
+      options.vectorMatvec = matvec == "vector";
+      auto attention = arg("attention", "staged");
+      if(attention != "staged" && attention != "fused"){ throw std::runtime_error("Unknown attention implementation"); }
+      options.fusedAttention = attention == "fused";
       auto transport = arg("transport", "copy");
       if(transport != "copy" && transport != "mapped"){ throw std::runtime_error("Unknown transport"); }
       options.mapped = transport == "mapped";

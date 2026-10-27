@@ -1,6 +1,9 @@
 #pragma once
 
 #include "Model.hpp"
+#include "Attention.cuh"
+#include "../../third_party/llama_cpp/PairDot.cuh"
+#include "../../third_party/fastertransformer/WarpReduce.cuh"
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include <cuda/atomic>
@@ -34,6 +37,8 @@ namespace Stream::Cuda {
   struct Args{
     ModelConfig c;
     bool mixed;
+    bool vectorMatvec;
+    bool fusedAttention;
     const void* inputWeight;
     const void* finalNorm;
     const void* scoreWeight;
@@ -97,8 +102,14 @@ namespace Stream::Cuda {
     int lane = threadIdx.x % 32;
     for(int row = global_thread() / 32; row < rows; row += total_threads() / 32){
       float sum = 0;
-      for(int i = lane; i < cols; i += 32){
-        sum += load_value(weight, row * cols + i, a.mixed) * input[i];
+      bool aligned = (reinterpret_cast<std::uintptr_t>(input) % alignof(float2) == 0) &&
+        (reinterpret_cast<std::uintptr_t>(weight) % (a.mixed ? alignof(__half2) : alignof(float2)) == 0);
+      if(a.vectorMatvec && cols % 2 == 0 && aligned){
+        sum = pair_dot(weight, input, row, cols, a.mixed);
+      }else{
+        for(int i = lane; i < cols; i += 32){
+          sum += load_value(weight, row * cols + i, a.mixed) * input[i];
+        }
       }
       sum = warp_sum(sum);
       if(lane == 0){
@@ -114,8 +125,8 @@ namespace Stream::Cuda {
     for(int i = threadIdx.x % 32; i < a.c.width; i += 32){
       sum += input[i] * input[i];
     }
-    sum = warp_sum(sum);
-    float scale = 1.0f / sqrtf(__shfl_sync(0xffffffff, sum, 0) / a.c.width + a.c.epsilon);
+    sum = warp_all_sum(sum);
+    float scale = 1.0f / sqrtf(sum / a.c.width + a.c.epsilon);
     for(int i = global_thread(); i < a.c.width; i += total_threads()){
       float value = input[i] * scale * load_value(weight, i, a.mixed);
       if(preCast){ preCast[i] = value; }
@@ -178,13 +189,13 @@ namespace Stream::Cuda {
           for(int j = lane; j < valid; j += 32){
             maximum = fmaxf(maximum, logits[j]);
           }
-          maximum = __shfl_sync(0xffffffff, warp_max(maximum), 0);
+          maximum = warp_all_max(maximum);
           float total = 0;
           for(int j = lane; j < valid; j += 32){
             logits[j] = expf(logits[j] - maximum);
             total += logits[j];
           }
-          total = __shfl_sync(0xffffffff, warp_sum(total), 0);
+          total = warp_all_sum(total);
           for(int j = lane; j < valid; j += 32){
             logits[j] /= total;
           }
@@ -244,7 +255,13 @@ namespace Stream::Cuda {
     for(int l = 0; l < a.c.layers; l++){
       for(int stage = 0; stage < LAYER_STAGES; stage++){
         if(stage != 16){
-          layer_stage(a, l, stage);
+          if(a.fusedAttention && (stage == 7 || stage == 8)){ continue; }
+          if(a.fusedAttention && stage == 6){
+            fused_attention({a.q, a.keys, a.values, a.attention, a.c.heads,
+                             a.c.width / a.c.heads, a.c.window, l, *a.position, a.mixed});
+          }else{
+            layer_stage(a, l, stage);
+          }
           // All output owners finish before a later phase consumes their values.
           phase_barrier<Multi>();
         }

@@ -1,4 +1,6 @@
 """Run remaining correctness checks serially after the native stress gate."""
+from bench.gpu_guard import run_exclusive
+
 import argparse
 import hashlib
 import json
@@ -49,13 +51,14 @@ def main():
     ]
     report = []
     for name, command in commands:
-        clients = subprocess.check_output(
-            ['nvidia-smi', '--query-compute-apps=pid,process_name', '--format=csv,noheader'], text=True).strip()
-        if clients:
-            raise RuntimeError(f'Another GPU client is active; no job was interrupted: {clients}')
         print(f'Starting {name}', flush=True)
         with (args.output / f'{name}.log').open('w') as log:
-            rc = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT).returncode
+            if name in ['ctest', 'memcheck', 'synccheck']:
+                rc = run_exclusive(command, evidence=args.output / f'{name}.gpu-processes.json',
+                                   stdout=log, stderr=subprocess.STDOUT).returncode
+            else:
+                # Each validation launcher guards its GPU children; do not nest locks.
+                rc = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT).returncode
         report.append(dict(name=name, command=command, returncode=rc))
         (args.output / 'summary.json').write_text(json.dumps(report, indent=2))
         if rc:

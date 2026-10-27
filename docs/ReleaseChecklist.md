@@ -5,6 +5,13 @@ its requirements to current evidence and remaining work. A script's existence,
 queued job or short diagnostic is not a completed experiment. Historical Ampere
 measurements do not establish final Blackwell performance.
 
+Latest optimization evidence: the optional tiled attention path passed 16 model
+conditions, 16 cold-process loading cases and fresh native/primitive sanitizer
+checks. Three 10k comparisons still favor staged attention. The CUDA metadata
+preload fix and losing variants are documented in [Attention.md](Attention.md).
+These bounded checks do not replace the release gates below or establish a new
+54-case matrix for the current executable.
+
 | Plan requirement | Current evidence | Remaining release gate |
 |---|---|---|
 | Final hardware and approved toolchain (§3, §5) | Native SM120 build; hardware/environment manifests; uv environments | Freeze immutable source commit and final environment alongside final runs |
@@ -28,7 +35,7 @@ measurements do not establish final Blackwell performance.
 | 100,000 completions × five varied-order runs (§9) | Runner enforces counts; no final matrix yet | Complete final conditions and verify individual raw samples/repetition coverage |
 | Common rates, bursts, queue/drop visibility (§9) | Independent producer; bounded queue; schedule regression checks | Run common absolute rates 25/50/75/90/110%, matched bursts and overload |
 | Separate backend-specific saturation curves (§9) | Runner and schedule tests | Collect and plot curves without confusing them with common-rate comparisons |
-| Model/window/mode/CPU crossover (M5) | Fixtures prepared for 30 window variants | Complete size/window/precision studies and plot headline crossover results |
+| Model/window/mode/CPU crossover (M5) | Fixtures prepared; bounded GPU size/grid/window survey in `docs/Crossover.md`, no persistence crossover found | Complete size/window/precision studies and plot headline crossover results |
 | Affinity, NUMA, governor and clock controls (§9) | Affinity available; hard NUMA rejected; governors read-only | Before/after permitted controls, topology/locality metadata and unchanged-setting/restoration records |
 | Default versus controlled clock idle/power study (§9) | Default-clock diagnostic infrastructure; no global changes | Establish supported/restorable clock controls or document exact restriction; measured low-load/gap latency, power and CPU use |
 | Telemetry correlation and trustworthy percentiles (§9) | Raw analyzer; nearest-rank agreement; startup/drop/clock regression tests | Analyze final measured intervals and per-run variability; do not add stage p99s or infer DRAM bandwidth |

@@ -12,6 +12,8 @@ import time
 import datetime
 from pathlib import Path
 
+from bench.gpu_guard import GpuGuard
+
 
 def locality(pid):
     process = Path(f'/proc/{pid}')
@@ -31,7 +33,14 @@ def locality(pid):
         return dict(status='unavailable', pid=pid, reason=str(error))
 
 
-def run(command, prefix, telemetry=True):
+def run(command, prefix, telemetry=True, gpu_exclusive=True):
+    if gpu_exclusive:
+        with GpuGuard(str(prefix) + '.gpu-processes.json') as guard:
+            return _run(command, prefix, telemetry, guard)
+    return _run(command, prefix, telemetry)
+
+
+def _run(command, prefix, telemetry, guard=None):
     prefix = Path(prefix)
     prefix.parent.mkdir(parents=True, exist_ok=True)
     Path(str(prefix) + '.command.json').write_text(json.dumps(command, indent=2))
@@ -45,6 +54,8 @@ def run(command, prefix, telemetry=True):
         start_wall, start_monotonic = time.time_ns(), time.monotonic_ns()
         with Path(str(prefix) + '.log').open('w') as output:
             result = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT)
+            if guard:
+                guard.watch(result.pid)
             try:
                 result.wait(timeout=.2)
                 observed = dict(status='unavailable', reason='Process completed before locality sample', pid=result.pid)

@@ -1,0 +1,142 @@
+{
+  "date": "2026-10-27",
+  "method": "Pinned source inspection through connected GitHub app; upstream projects not built or benchmarked",
+  "repositories": [
+    {
+      "repository": "mann-uofg/infer",
+      "commit": "aa51492a5ec4907cd70a71f2c628d73d7825ef9e",
+      "files": [
+        {
+          "path": "README.md",
+          "git_blob_sha": "88741f0b518c1b373794263783cf769e39519d15",
+          "bytes": 15327
+        },
+        {
+          "path": "reference/llama.py",
+          "git_blob_sha": "0d4185e598733bcb5c9d08e8531449a7f3fd93af",
+          "bytes": 10531
+        },
+        {
+          "path": "src/kernels/decode.cu",
+          "git_blob_sha": "82bf8574faf0cdb39a481e8b94506b8307a7c037",
+          "bytes": 12938
+        },
+        {
+          "path": "src/kernels/gemv.cu",
+          "git_blob_sha": "b7f8b60dfe319c439d232b29530753cc5c8302e5",
+          "bytes": 14808
+        },
+        {
+          "path": "tests/kernel_test.cu",
+          "git_blob_sha": "cab80eaf958313925a22889bd33b595f5cd73617",
+          "bytes": 17960
+        },
+        {
+          "path": "tests/python/test_engine.py",
+          "git_blob_sha": "8e8ca734ddcd95fcc106916eee9c19ba8c162165",
+          "bytes": 5120
+        }
+      ],
+      "license": "No license file found in inspected tree or license header in inspected implementation files"
+    },
+    {
+      "repository": "NVIDIA/dl-lowlat-infer",
+      "commit": "a718567b47e8d80ac38d58ac76df8d98a0eaab3d",
+      "files": [
+        {
+          "path": "LICENSE",
+          "git_blob_sha": "b23bc4636ba55b782bf80d658bf0a875b6cb7b6c",
+          "bytes": 11315
+        },
+        {
+          "path": "README.md",
+          "git_blob_sha": "81458e2494ba4800912662991a89545635ca8c30",
+          "bytes": 14534
+        },
+        {
+          "path": "src/cpp/nvlstm_inf/ModelPersistentBase.cuh",
+          "git_blob_sha": "70c19b727e01cffe03351d59a1e01e7293065a78",
+          "bytes": 12866
+        },
+        {
+          "path": "src/cpp/nvlstm_inf/PingPongModelPersistent.cuh",
+          "git_blob_sha": "c3b50c33b104b88a872f3db0bbf88e6eee929a4c",
+          "bytes": 10749
+        },
+        {
+          "path": "src/cpp/nvlstm_inf/ss_gemv_impl/gemv_lstm_utils.cuh",
+          "git_blob_sha": "7a8b7a6c4b48d0e9791e0ada8dcef4355db5b507",
+          "bytes": 27264
+        },
+        {
+          "path": "test/cpp/nvlstm_inf/ping_pong_model_test.cu",
+          "git_blob_sha": "d7e210f972b17158fc4e0169318109ed762ec4de",
+          "bytes": 8253
+        }
+      ],
+      "license": "Apache-2.0"
+    },
+    {
+      "repository": "cohere-ai/cohere-megakernel",
+      "commit": "67d0b9ca22ea3652796b715d1d1863459e0e2c3c",
+      "files": [
+        {
+          "path": "LICENSE",
+          "git_blob_sha": "128419026f0ae536871e908595db9ce0013d9928",
+          "bytes": 11337
+        },
+        {
+          "path": "README.md",
+          "git_blob_sha": "04f1d4deca1ab817397c022c2bf59a210b0c09c1",
+          "bytes": 8135
+        },
+        {
+          "path": "src/decode/abi.h",
+          "git_blob_sha": "c588632f1829632a828c9d2f985cf014d5c7c0b8",
+          "bytes": 16302
+        },
+        {
+          "path": "src/decode/megakernel.cuh",
+          "git_blob_sha": "a8f708915d841e6fe730b3f01650dbb9ad1c61b0",
+          "bytes": 144593
+        },
+        {
+          "path": "src/decode/runtime.cu",
+          "git_blob_sha": "0b7585309b6cd0aa41f362374890b8168f49a1d3",
+          "bytes": 147459
+        },
+        {
+          "path": "src/tests/test_decode_layers.py",
+          "git_blob_sha": "ab2caf61ed6b7c1bd37abc66bacc01c86fdd16b2",
+          "bytes": 33993
+        }
+      ],
+      "license": "Apache-2.0"
+    }
+  ],
+  "additional_sources": [
+    {
+      "repository": "ggml-org/llama.cpp",
+      "commit": "de5122d879d00d2895c36be7e0cee94105aeeabd",
+      "files": [
+        "ggml/src/ggml-cuda/mmvf.cu",
+        "LICENSE"
+      ],
+      "reuse": "MIT-licensed pair-load loops adapted; no upstream build"
+    },
+    {
+      "repository": "flashinfer-ai/flashinfer",
+      "commit": "07cc0d60a9ba1aca87b7b803ab1810ca5e3738d6",
+      "files": [
+        "include/flashinfer/attention/decode.cuh",
+        "include/flashinfer/norm.cuh"
+      ],
+      "reuse": "Pinned source informed original tiled attention; no upstream code vendored or package built; headers identify Apache-2.0"
+    },
+    {
+      "repository": "mirage-project/mirage",
+      "commit": "63af900000d8928a885f7af7889a3448621e18a9",
+      "scope": "Inspected recursive tree for persistent_kernel/tasks/blackwell, including SM100 filenames; no code adopted"
+    }
+  ]
+}

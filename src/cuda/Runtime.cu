@@ -15,6 +15,10 @@
 
 namespace Stream::Cuda {
   __global__ void stage_kernel(Args a, int layer, int stage){ layer_stage(a, layer, stage); }
+  __global__ void attention_kernel(Args a, int layer){
+    fused_attention({a.q, a.keys, a.values, a.attention, a.c.heads,
+                     a.c.width / a.c.heads, a.c.window, layer, *a.position, a.mixed});
+  }
   __global__ void input_kernel(Args a){ matvec(a, a.inputWeight, a.input, a.x, a.c.width, a.c.features); }
   __global__ void norm_kernel(Args a){ rms_norm(a, a.x, a.finalNorm, a.norm); }
   __global__ void score_kernel(Args a){ matvec(a, a.scoreWeight, a.norm, a.score, 1, a.c.width, true); }
@@ -194,6 +198,11 @@ namespace Stream {
         mArgs = {};
         mArgs.c = c;
         mArgs.mixed = model.mixed;
+        mArgs.vectorMatvec = options.vectorMatvec;
+        mArgs.fusedAttention = options.fusedAttention;
+        if(options.fusedAttention && ((c.width / c.heads != 16 && c.width / c.heads != 32) || c.window > 512)){
+          throw std::runtime_error("Fused attention requires head dimension 16 or 32 and window <=512");
+        }
         mArgs.keys = mKeys.get();
         mArgs.values = mValues.get();
         mArgs.position = mPosition.get();
@@ -276,6 +285,9 @@ namespace Stream {
         if((options.backend == Backend::FUSED || options.backend == Backend::PERSISTENT) && options.blocks > mLegalBlocks){
           throw std::runtime_error("Requested cooperative grid exceeds actual occupancy limit " + std::to_string(mLegalBlocks));
         }
+        // Querying a cold kernel can synchronize the CUDA context under lazy
+        // loading. Cache metadata before starting a worker that waits for the CPU.
+        CUDA_CHECK(cudaFuncGetAttributes(&mAttentionAttributes, attention_kernel));
         if(options.backend == Backend::PERSISTENT){ start(); }
       }
 
@@ -343,7 +355,12 @@ namespace Stream {
         for(int l = 0; l < c.layers; l++){
           const auto& w = mArgs.layers[l];
           for(int s = 0; s < LAYER_STAGES; s++){
-            if(s == 16){ continue; }
+            if(s == 16 || (mArgs.fusedAttention && (s == 7 || s == 8))){ continue; }
+            if(mArgs.fusedAttention && s == 6){
+              attention_kernel<<<c.heads, 128, 0, mStream.value>>>(mArgs, l);
+              CUDA_CHECK(cudaGetLastError());
+              continue;
+            }
             if(blas && (s == 1 || s == 2 || s == 3 || s == 9 || s == 12 || s == 13 || s == 15)){
               if(s == 1){ blasLinear(w.q, mArgs.norm, mArgs.q, c.width, c.width); }
               if(s == 2){ blasLinear(w.k, mArgs.norm, mArgs.k, c.width, c.width); }
@@ -489,7 +506,13 @@ namespace Stream {
           const auto& w = mArgs.layers[l];
           auto p = "layers." + std::to_string(l) + ".";
           for(int s = 0; s < LAYER_STAGES; s++){
-            if(s == 16){ continue; }
+            if(s == 16 || (mArgs.fusedAttention && (s == 7 || s == 8))){ continue; }
+            if(mArgs.fusedAttention && s == 6){
+              attention_kernel<<<c.heads, 128, 0, mStream.value>>>(mArgs, l);
+              CUDA_CHECK(cudaGetLastError());
+              capture(p + "attention", mArgs.attention, c.width);
+              continue;
+            }
             if(s == 0){ norm(p + "norm1", w.norm1); }
             else if(s == 1){ linear(p + "q", w.q, mArgs.norm, mArgs.q, c.width, c.width); }
             else if(s == 2){ linear(p + "k", w.k, mArgs.norm, mArgs.k, c.width, c.width); }
@@ -558,6 +581,11 @@ namespace Stream {
         CUDA_CHECK(cudaFuncGetAttributes(&attributes, kernel));
         return {{"environment", mProbe}, {"blocks", mOptions.blocks}, {"legal_cooperative_blocks", mLegalBlocks},
           {"resource_kernel", resourceKernel},
+          {"attention_implementation", mOptions.fusedAttention ? "fused-tiled-block-per-head" : "staged"},
+          {"standalone_fused_attention_resources", {{"blocks", mArgs.c.heads}, {"threads", 128},
+            {"registers_per_thread", mAttentionAttributes.numRegs}, {"local_bytes", mAttentionAttributes.localSizeBytes},
+            {"shared_bytes", mAttentionAttributes.sharedSizeBytes}}},
+          {"matvec_implementation", mOptions.vectorMatvec ? "vector-pair-with-scalar-fallback" : "scalar"},
           {"threads", 128}, {"registers_per_thread", attributes.numRegs}, {"local_bytes", attributes.localSizeBytes},
           {"shared_bytes", attributes.sharedSizeBytes}, {"transport", mOptions.backend == Backend::PERSISTENT ? "mapped-system-load-store" : mOptions.mapped ? "mapped-stream-sync" : "pinned-copy-stream-sync"},
           {"poll_policy", mOptions.backoff ? "bounded-device-backoff-host-yield" : "tight"},
@@ -617,6 +645,7 @@ namespace Stream {
       std::unique_ptr<Buffer<char>> mBlasWorkspace;
       std::vector<std::unique_ptr<Buffer<char>>> mWeights;
       Args mArgs{};
+      cudaFuncAttributes mAttentionAttributes{};
       Json mProbe;
       int mLegalBlocks = 1;
       bool mRunning = false;

@@ -1,4 +1,6 @@
 """Run numerical gates, preserving stdout, errors and exact command lines."""
+from bench.gpu_guard import run_exclusive
+
 import argparse
 import json
 import subprocess
@@ -11,7 +13,7 @@ def run(command, log):
     with log.open('w') as out:
         out.write(json.dumps(command) + '\n')
         out.flush()
-        result = subprocess.run(command, stdout=out, stderr=subprocess.STDOUT)
+        result = run_exclusive(command, evidence=str(log) + '.gpu-processes.json', stdout=out, stderr=subprocess.STDOUT)
     return result.returncode
 
 

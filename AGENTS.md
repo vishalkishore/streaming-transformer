@@ -171,6 +171,8 @@ Record hypotheses, before/after measurements, actual compiler/profiler settings,
 
 Run relevant CPU tests and supported GPU checks. If hardware or profiler permissions prevent a check, identify exactly what was not run; do not fabricate results. State measured improvements only for the tested configuration.
 
+User direction on 27 October 2026: run GPU tests and benchmarks only when no other GPU client is active. Wait for competing processes; never terminate them. Use the shared guard in `bench/gpu_guard.py` to check compute and graphics processes before launch and monitor during execution. Reject measurements with observed competition or unavailable process visibility. Keep CPU timing and GPU runs separate. Raw native commands need the same guard when invoked manually.
+
 ## Inspected style sources
 
 Inspected on 26 October 2026:

@@ -4,11 +4,179 @@
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <cmath>
+#include <utility>
 #include <vector>
 
 namespace {
   using namespace Stream;
   using namespace Stream::Cuda;
+  __global__ void attention_test_kernel(AttentionArgs a){ fused_attention(a); }
+
+  TEST(Primitives, FusedAttentionRingAndRaggedHistory){
+    int devices = 0;
+    if(cudaGetDeviceCount(&devices) != cudaSuccess || devices == 0){ GTEST_SKIP() << "No CUDA GPU"; }
+    for(bool mixed : {false, true}){
+      for(int dim : {16, 32}){
+        for(int window : {1, 7, 32, 64, 256, 512}){
+          int heads = 4, count = 2 * heads * window * dim;
+          Buffer<float> queryBuffer(heads * dim), outputBuffer(heads * dim + 4);
+          Buffer<char> keysBuffer(count * (mixed ? 2 : 4)), valuesBuffer(count * (mixed ? 2 : 4));
+          std::vector<float> query(heads * dim), keys(count), values(count), output(heads * dim + 4);
+          auto rounded = [&](float x){ return mixed ? __half2float(__float2half(x)) : x; };
+          for(int i = 0; i < heads * dim; i++){ query[i] = rounded(.5f * std::sin(float(i) * .23f)); }
+          CUDA_CHECK(cudaMemcpy(queryBuffer.get(), query.data(), query.size() * sizeof(float), cudaMemcpyHostToDevice));
+          auto upload = [&](Buffer<char>& buffer, const std::vector<float>& data){
+            if(mixed){
+              std::vector<__half> half(data.size());
+              for(std::size_t i = 0; i < data.size(); i++){ half[i] = __float2half(data[i]); }
+              CUDA_CHECK(cudaMemcpy(buffer.get(), half.data(), half.size() * sizeof(__half), cudaMemcpyHostToDevice));
+            }else{
+              CUDA_CHECK(cudaMemcpy(buffer.get(), data.data(), data.size() * sizeof(float), cudaMemcpyHostToDevice));
+            }
+          };
+          for(std::uint64_t position : {0ULL, 1ULL, 30ULL, 31ULL, 32ULL, 63ULL, 64ULL,
+                                       65ULL, 254ULL, 255ULL, 256ULL, 257ULL, 511ULL,
+                                       512ULL, 1027ULL, 10007ULL, 1000000ULL}){
+            int valid = int(std::min<std::uint64_t>(position + 1, window));
+            // Poison unused history and layer zero; only layer one's retained slots count.
+            std::fill(keys.begin(), keys.end(), 10000);
+            std::fill(values.begin(), values.end(), -10000);
+            for(int head = 0; head < heads; head++){
+              for(int j = 0; j < valid; j++){
+                int slot = (position + 1 - valid + j) % window;
+                int base = ((heads + head) * window + slot) * dim;
+                for(int i = 0; i < dim; i++){
+                  keys[base + i] = rounded(std::sin(float(j * dim + i + head) * .17f));
+                  values[base + i] = rounded(std::cos(float(j * dim + i + head) * .31f));
+                }
+              }
+            }
+            upload(keysBuffer, keys);
+            upload(valuesBuffer, values);
+            std::vector<double> expected(heads * dim, 0);
+            for(int head = 0; head < heads; head++){
+              std::vector<double> scores(valid);
+              for(int j = 0; j < valid; j++){
+                int slot = (position + 1 - valid + j) % window;
+                int base = ((heads + head) * window + slot) * dim;
+                double dot = 0;
+                for(int i = 0; i < dim; i++){ dot += double(query[head * dim + i]) * keys[base + i]; }
+                scores[j] = dot / std::sqrt(double(dim));
+              }
+              double maximum = *std::max_element(scores.begin(), scores.end()), total = 0;
+              for(double& score : scores){ score = std::exp(score - maximum); total += score; }
+              for(int j = 0; j < valid; j++){
+                int slot = (position + 1 - valid + j) % window;
+                int base = ((heads + head) * window + slot) * dim;
+                for(int i = 0; i < dim; i++){ expected[head * dim + i] += scores[j] / total * values[base + i]; }
+              }
+            }
+            AttentionArgs a{queryBuffer.get(), keysBuffer.get(), valuesBuffer.get(), outputBuffer.get() + 2,
+                            heads, dim, window, 1, position, mixed};
+            for(int blocks : {1, 4, 110}){
+              std::fill(output.begin(), output.end(), -999);
+              CUDA_CHECK(cudaMemcpy(outputBuffer.get(), output.data(), output.size() * sizeof(float), cudaMemcpyHostToDevice));
+              attention_test_kernel<<<blocks, 128>>>(a);
+              CUDA_CHECK(cudaGetLastError());
+              CUDA_CHECK(cudaDeviceSynchronize());
+              CUDA_CHECK(cudaMemcpy(output.data(), outputBuffer.get(), output.size() * sizeof(float), cudaMemcpyDeviceToHost));
+              ASSERT_EQ(output[0], -999);
+              ASSERT_EQ(output[1], -999);
+              ASSERT_EQ(output[output.size() - 1], -999);
+              ASSERT_EQ(output[output.size() - 2], -999);
+              for(int i = 0; i < heads * dim; i++){
+                float want = rounded(float(expected[i]));
+                ASSERT_NEAR(output[i + 2], want, (mixed ? .002 : 1e-5) + (mixed ? .02 : 1e-4) * std::abs(want))
+                  << "dim=" << dim << " window=" << window << " position=" << position
+                  << " blocks=" << blocks << " mixed=" << mixed;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  __global__ void matvec_test_kernel(Args a, int rows, int cols){
+    matvec(a, a.inputWeight, a.input, a.x, rows, cols, rows == 1);
+  }
+
+  TEST(Primitives, VectorMatvecShapesAndAlignment){
+    int devices = 0;
+    if(cudaGetDeviceCount(&devices) != cudaSuccess || devices == 0){ GTEST_SKIP() << "No CUDA GPU"; }
+    for(bool mixed : {false, true}){
+      for(auto shape : {std::pair{64, 32}, {64, 64}, {128, 64}, {64, 128}, {128, 32}, {128, 128},
+                       {256, 128}, {128, 256}, {256, 32}, {256, 256},
+                       {512, 256}, {256, 512}, {1, 64}, {1, 128}, {1, 256},
+                       {7, 31}, {7, 33}}){
+        auto [rows, cols] = shape;
+        std::vector<float> weights(rows * cols), input(cols), output(rows);
+        for(int i = 0; i < rows * cols; i++){
+          float value = std::sin(float(i) * .17f) / std::sqrt(float(cols));
+          weights[i] = mixed ? __half2float(__float2half(value)) : value;
+        }
+        for(int i = 0; i < cols; i++){ input[i] = std::cos(float(i) * .31f); }
+        std::vector<__half> half(weights.size());
+        for(std::size_t i = 0; i < weights.size(); i++){ half[i] = __float2half(weights[i]); }
+        Buffer<char> weightBuffer((weights.size() + 1) * (mixed ? 2 : 4));
+        Buffer<float> inputBuffer(cols + 1), outputBuffer(rows);
+        for(auto offsets : {std::pair{0, 0}, {1, 0}, {0, 1}, {1, 1}}){
+          auto [weightOffset, inputOffset] = offsets;
+          Args a{};
+          a.mixed = mixed;
+          a.inputWeight = weightBuffer.get() + weightOffset * (mixed ? 2 : 4);
+          a.input = inputBuffer.get() + inputOffset;
+          a.x = outputBuffer.get();
+          CUDA_CHECK(cudaMemcpy(const_cast<void*>(a.inputWeight), mixed ? static_cast<void*>(half.data()) : weights.data(),
+                                weights.size() * (mixed ? 2 : 4), cudaMemcpyHostToDevice));
+          CUDA_CHECK(cudaMemcpy(a.input, input.data(), cols * sizeof(float), cudaMemcpyHostToDevice));
+          for(bool vector : {false, true}){
+            a.vectorMatvec = vector;
+            for(int blocks : {1, 4, 110}){
+              matvec_test_kernel<<<blocks, 128>>>(a, rows, cols);
+              CUDA_CHECK(cudaGetLastError());
+              CUDA_CHECK(cudaDeviceSynchronize());
+              CUDA_CHECK(cudaMemcpy(output.data(), a.x, rows * sizeof(float), cudaMemcpyDeviceToHost));
+              for(int row = 0; row < rows; row++){
+                double expected = 0;
+                for(int col = 0; col < cols; col++){ expected += double(weights[row * cols + col]) * input[col]; }
+                if(mixed && rows != 1){ expected = __half2float(__float2half(float(expected))); }
+                ASSERT_NEAR(output[row], expected, (mixed ? .002 : 1e-5) + (mixed ? .02 : 1e-4) * std::abs(expected))
+                  << "rows=" << rows << " cols=" << cols << " weightOffset=" << weightOffset
+                  << " inputOffset=" << inputOffset << " vector=" << vector;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  __global__ void reduction_kernel(float* output){
+    int idx = global_thread();
+    float value = float(idx % 32 - 16);
+    output[2 * idx] = warp_all_sum(value);
+    output[2 * idx + 1] = warp_all_max(value);
+  }
+
+  TEST(Primitives, NvidiaAllLaneReductions){
+    int devices = 0;
+    if(cudaGetDeviceCount(&devices) != cudaSuccess || devices == 0){ GTEST_SKIP() << "No CUDA GPU"; }
+    // Signed inputs exercise cancellation; verify the result in every lane.
+    for(int blocks : {1, 4, 110}){
+      Buffer<float> data(2 * blocks * 128);
+      std::vector<float> output(data.count());
+      reduction_kernel<<<blocks, 128>>>(data.get());
+      CUDA_CHECK(cudaGetLastError());
+      CUDA_CHECK(cudaDeviceSynchronize());
+      CUDA_CHECK(cudaMemcpy(output.data(), data.get(), output.size() * sizeof(float), cudaMemcpyDeviceToHost));
+      for(int i = 0; i < blocks * 128; i++){
+        ASSERT_EQ(output[2 * i], -16.0f);
+        ASSERT_EQ(output[2 * i + 1], 15.0f);
+      }
+    }
+  }
+
   __global__ void primitive_kernel(Args a, int op){
     if(op == -1){
       matvec(a, a.inputWeight, a.input, a.x, 8, 4);

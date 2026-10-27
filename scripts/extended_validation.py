@@ -1,4 +1,6 @@
 """Independent full-sequence checks and bounded native adversarial input families."""
+from bench.gpu_guard import run_exclusive
+
 import argparse
 import itertools
 import json
@@ -75,7 +77,7 @@ def main():
                            '--mode', 'correctness', '--expected', str(stored_oracle), '--events', str(len(events)),
                            '--reset-every', str(reset), '--output', str(prefix)]
                 with Path(str(prefix) + '.log').open('w') as out:
-                    rc = subprocess.run(command, stdout=out, stderr=subprocess.STDOUT).returncode
+                    rc = run_exclusive(command, evidence=str(prefix) + '.gpu-processes.json', stdout=out, stderr=subprocess.STDOUT).returncode
                 row['native'].append(dict(command=command, returncode=rc))
                 if rc:
                     report.append(row)

@@ -1,4 +1,6 @@
 """Run eager/compiled/explicit-graph correctness serially on the final GPU."""
+from bench.gpu_guard import run_exclusive
+
 import argparse
 import itertools
 import json
@@ -18,7 +20,7 @@ def main():
         command = [a.python, '-m', 'bench.torch_bench', '--fixture', f'fixtures/{size}-{mode}',
                    '--backend', backend, '--correctness', '--warmup', '4', '--output', str(prefix)]
         with Path(str(prefix) + '.log').open('w') as out:
-            rc = subprocess.run(command, stdout=out, stderr=subprocess.STDOUT).returncode
+            rc = run_exclusive(command, evidence=str(prefix) + '.gpu-processes.json', stdout=out, stderr=subprocess.STDOUT).returncode
         report.append(dict(name=prefix.name, returncode=rc, command=command))
         (a.output / 'summary.json').write_text(json.dumps(report, indent=2))
         print(prefix.name, rc, flush=True)

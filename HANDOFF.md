@@ -1,5 +1,98 @@
 # Project handoff — updated 27 October 2026
 
+## Latest continuation — graph win and crossover diagnosis
+
+Added `docs/Crossover.md`, guarded `scripts/check_crossover.py`, an audited plot
+script and two aggregation regressions. The source analysis counts cooperative
+barriers and explains phase imbalance/resource costs without claiming measured
+barrier durations. No numerical routines/defaults were changed in this step.
+
+72 initial 1k size/grid/window conditions and 72 accepted 10k conditions have
+valid sampled GPU-exclusivity evidence and benchmark SHA256
+`f682dc713f82711dd991650851ef20940bca9e2bd108b11f49bf88c3b47a3194`.
+Three clean varied-order 10k host-service p99 medians, graph/persistent (us):
+Small FP32 96.139/120.008, mixed 101.089/124.458;
+Main FP32 184.387/221.246, mixed 195.326/224.996;
+Large FP32 466.961/508.921, mixed 474.291/514.010.
+Persistence also loses preloaded device means by 7.2–13.2%; live signaling alone
+does not explain the gap. No persistence-winning crossover found. Smaller 4/16
+block grids slow both backends on Small/Main; Main windows 32/512 also favor graph.
+
+A Python suite accidentally overlapped the original 10k repeat 0; all 24 runs
+in that repetition are explicitly excluded, retained and replaced after tests.
+Accepted repetitions are 1/2/3, not the unfiltered original summary. Use
+`results/crossover-survey-10k/accepted-summary.json` and the two
+`results/crossover-survey*-figure.json` audits. CPU baselines were not repeated.
+Fresh Python tests: 60 pass (rerun serially after all GPU work). Current full
+release gates, resident weights, long stress, power/arrival studies and final
+100k x five runs remain pending. No native rebuild was needed for these scripts.
+
+
+## Latest continuation — tiled attention and CUDA loading fix
+
+Implemented optional `--attention fused` in `src/cuda/Attention.cuh`, shared by
+native sequence/graph and fused/persistent forward paths. It uses 128-thread
+blocks, one head per active block, coalesced pair loads, shared K/V tiles and
+stable FP32 softmax. Head dimensions 16/32 and windows up to 512 are supported; Q/K
+are already rotated and the existing FP16 output boundary is retained. No
+FlashInfer package/source was installed or vendored; the pinned source informed
+this project-owned implementation. Online rescaling and split-KV are deferred.
+
+Current tiled implementation passes 16 full-model conditions across all sizes
+and both modes, plus 16 fresh-process LAZY/EAGER loading cases, fresh CTest and
+58 Python tests. Independent FP64/ragged/ring/poison/output-guard tests ran under
+memcheck, synccheck and racecheck with zero errors/hazards. Diagnostic tracing
+now checks both attention modes exactly. Verified logs: `results/tiled-attention-*`.
+An early test object omitted the newly added primitive test; those earlier
+passes are not evidence for that test. Forced rebuild and registered-test checks
+preceded the accepted sanitizer runs.
+
+The first attempt exposed a real initialization failure: querying a cold kernel's
+attributes after starting persistence could block under lazy loading until the
+worker's idle exit. `Runtime` now caches attention-kernel metadata before starting
+the worker. LAZY failed/EAGER passed before this fix; all 16 cold regressions pass
+with it. Copy warm-up alone did not fix it and was removed. No forced EAGER mode
+or longer idle timeout is used. Preserve the failed logs and initial prototype.
+
+Three varied-order 10k Main medians, staged/fused p99 (us): FP32 graph 185.287/232.457,
+persistent 220.497/261.247; mixed graph 194.487/233.426, persistent 224.447/264.636.
+Scalar GEMV, grid 110, default clocks and affinity core 96 were fixed. All 64 model/
+timing sidecars passed sampled GPU-client checks, with no CPU oracle active or
+CPU baseline repeated. Staged remains default; no speedup over it is claimed.
+Raw data: `results/tiled-attention/`; audit: `results/tiled-attention-audit.json`.
+
+Four bounded 512-event Nsight captures are in `results/attention-profiles-tiled/`.
+The original untiled prototype and bounded-index-only diagnostic are retained
+in `results/fused-attention/` and `results/fused-attention-ring-index-smoke/`.
+Full details and reproduction: `docs/Attention.md`. Future candidates include
+more history parallelism, with its combine cost measured. Million-command
+stress, other final matrices, full studies and final report remain pending.
+
+## Previous continuation — empty GPU and vector GEMV
+
+The user requires GPU tests only with no competing GPU clients. No project run
+was active at the stop request. `bench/gpu_guard.py` now waits for no compute or
+graphics clients and records one-second process monitoring in sidecars; observed
+competition or query failure rejects the run. Never terminate others' processes.
+Workspace launchers serialize using `results/.gpu-run.lock`. Test descendants
+are allowed; independent processes are not. Sampling cannot prove absence of
+short-lived interference. Final-study caching requires valid hashed evidence.
+
+Adapted the pinned MIT-licensed llama.cpp pair-load loops under
+`third_party/llama_cpp`; `--matvec vector` selects this experiment and scalar
+remains default. Full vector model checks passed 12 cases across all sizes and
+both modes at graph110/persistent110. Native tests cover exact matrix shapes,
+FP64 dots, alignment fallback and odd widths. Python tests pass 58 cases. All 44
+vector experiment sidecars passed; raw data: `results/vector-matvec`.
+
+Three 10k Main repetitions show scalar/vector median p99 (us): FP32 graph
+187.84/196.62, persistent 223.56/231.18; mixed graph 197.62/197.67,
+persistent 226.51/230.83. No measured gain; preserve the losing result and scalar
+default. Runtime variant dispatch increases compiled register use compared with
+the previous binary; see LAB_NOTEBOOK.md before comparing across versions.
+FlashInfer attention is inspected but unimplemented; Mirage scheduling deferred.
+No million-command stress or final studies were restarted.
+
 ## Latest steering — CPU once, short GPU experiments first
 
 The user explicitly stopped the old million-command run and its waiting
@@ -20,29 +113,46 @@ Main FP32 serially, measuring CPU only once; `--skip-cpu` reuses that baseline.
 No million-command rerun has been started.
 
 GPU softmax now uses a warp per head; attention-value accumulation uses a warp
-per output coordinate and distributes history across lanes. These change FP32
-reduction order, so the earlier 54/54 matrix is historical evidence for the
-previous binary, not full acceptance of the new binary. The new Main FP32/mixed
-graph/cuBLAS-graph/persistent one/four-block matrix passed 8/8. New primitive tests
-cover ragged softmax lengths, large logit offsets, history lengths and wrapped
-value slots across one/four/110 blocks. Check the final CTest log and fresh full
-matrix before broadening correctness claims.
+per output coordinate and distributes history across lanes. The resulting full
+54-case native matrix passed (`results/parallel-values-all-check/summary.json`),
+and Python tests passed 47 cases. This is bounded correctness, not long stress.
 
-Short default-clock, affinity-pinned Main FP32 results (single runs; not final
-repeated evidence): initial persistent110 10k p99 707.41 us, after warp softmax
-590.58 us, after parallel values 236.56 us. Tested cuBLAS graph4 changed from
-877.42 to 764.02 to 529.16 us. CPU was measured once at 1k p99 38.89 us and still
-wins this configuration. Raw records: `results/quick-main*`. One-block persistent
-did not improve with the value-work distribution; preserve that losing result.
-The graph baseline is not yet fully tuned, and different-time runs need repeated
-controls before final improvement claims.
+The completed strong graph sweep changes the performance conclusion. Across
+five varied-order 10k Main FP32 runs, graph110/copy median p99 is 183.38 us and
+persistent110 median p99 is 236.72 us. Persistence loses by about 29% to this
+stronger graph configuration. CPU was measured once at 1k p99 38.89 us and wins
+this configuration. These remain short diagnostics, below final measurement
+counts. Raw records: `results/quick-main-tuned`. Earlier before/after gains
+against graph4 must not be presented as gains over the strongest graph.
 
-The source snapshot is public at https://github.com/vishalkishore/streaming-transformer,
-with published main `e8ecd375fc9c6e7e88ad817f8f93839da3b14ebe`. Current local changes
-after publication are not yet pushed. Initial local commit remains on
-`local-initial-snapshot`. Research references and applicability limits are in
-`docs/ImplementationReferences.md`. The older active section below describes
-superseded jobs and numerical checks; this section takes precedence.
+The user authorized borrowing public implementation code, preferring official
+sources. NVIDIA FasterTransformer warp sum/max excerpts are adapted under
+Apache-2.0 in `third_party/fastertransformer`; the source revision, source hash,
+modifications and upstream license are included. The new full-warp XOR
+reductions eliminate broadcasts in RMS normalization and softmax. Local current
+validation/timing outcomes are recorded in LAB_NOTEBOOK.md; consult those before
+assuming acceptance of this newer binary. No new Python dependency is required.
+Native source provenance now includes `third_party`.
+The adaptation now passes 36 changed-backend fixture cases plus four tuned-grid
+Main cases, both CTest targets and 52 Python tests. Three varied-order 10k A/B
+guarded reruns show persistent110 median p99 236.85 → 230.01 us (2.89% lower),
+versus graph110 184.86 → 185.69 us (0.45% higher). Graph still wins. Raw evidence:
+`results/nvidia-reductions-ab-exclusive`; these supersede the unguarded A/B.
+All 20 process sidecars passed; these are short diagnostics, not final results.
+
+The user requested a direct comparison with infer, NVIDIA dl-lowlat-infer and
+Cohere. Pinned source inspection, semantic differences, licensing findings and
+next experiments are in `docs/RepositoryComparison.md`, with file/blob identities
+in `docs/repository-review.json`. New porting-contract tests guard adjacent-pair
+RoPE and uniform attention across retained history/reset. The active plan now
+names the actual SM120 target throughout its objective and build scope.
+
+The source is public at https://github.com/vishalkishore/streaming-transformer.
+The user subsequently committed the previous optimizations as `90fb59d`
+(`optimization`); current uncommitted NVIDIA adaptation is separate. Initial
+local commit remains on `local-initial-snapshot`. Research references and
+applicability limits are in `docs/ImplementationReferences.md`. The older active
+section below describes superseded jobs and checks; this section takes precedence.
 
 ## Active continuation — numerical acceptance before final studies
 

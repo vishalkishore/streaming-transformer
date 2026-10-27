@@ -1,7 +1,7 @@
 # Implementation references inspected on 27 October 2026
 
-These are design references, not measured results for this runtime. No external
-implementation has been installed, benchmarked or incorporated by this review.
+The table below lists design references, not measured results for this runtime.
+The NVIDIA FasterTransformer adaptation described below is incorporated separately.
 Our model, casts, ring-cache semantics, sequence-ID protocol and host-visible
 measurement boundary remain authoritative.
 
@@ -29,3 +29,17 @@ correctness and before/after timing evidence. Keep the cooperative barrier
 baseline until an alternative has a measured justification and a proven ordering
 protocol. Replacing it directly with another repository's atomic barrier would
 skip those requirements.
+
+## Incorporated NVIDIA code
+
+`third_party/fastertransformer/WarpReduce.cuh` adapts the FP32 warp sum and maximum
+from NVIDIA FasterTransformer commit `df4a7534860137e060e18d2ebf019906120ea204`.
+Its directory contains the upstream Apache-2.0 license, copyright, source URL,
+source hash and a list of modifications. No FasterTransformer installation or
+new package is required. Full-warp XOR reductions replace reduction followed by
+broadcast in RMS normalization and softmax; row-dot reductions remain unchanged.
+This is a small numerical primitive reuse, not adoption of FasterTransformer's
+model or serving runtime. See LAB_NOTEBOOK.md for local validation and timing.
+
+The pinned operation-by-operation comparison, local correctness coverage and
+reuse decisions are in [RepositoryComparison.md](RepositoryComparison.md).

@@ -26,12 +26,17 @@ def cached_result(prefix, identity):
         return None
     saved = read(stamp_path)
     artifacts = saved.pop('artifacts', {})
-    if saved != identity or set(artifacts) != {'.json', '.csv'}:
+    required = {'.json', '.csv'}
+    if identity.get('gpu_exclusivity_policy'):
+        required.add('.gpu-processes.json')
+    if saved != identity or set(artifacts) != required:
         return None
     for suffix, expected in artifacts.items():
         path = Path(str(prefix) + suffix)
         if not path.is_file() or file_hash(path) != expected:
             return None
+    if identity.get('gpu_exclusivity_policy') and not read(Path(str(prefix) + '.gpu-processes.json')).get('valid'):
+        return None
     return read(Path(str(prefix) + '.json'))
 
 
@@ -86,7 +91,8 @@ class Study:
                        '--producer-core', str(self.a.producer_core if controlled else -1),
                        '--clock-regime', 'default-dynamic-affinity' if controlled else 'default-dynamic-uncontrolled']
         command += extra
-        stamp = dict(command=command, native_executable_sha256=self.binary_hash)
+        stamp = dict(command=command, native_executable_sha256=self.binary_hash,
+                     gpu_exclusivity_policy='xml-process-watch-v1')
         discard = self.a.transport_warmup if measurement in ['ping-pong', 'gpu-ping', 'empty', 'empty-graph', 'copy'] else 0
         stamp['transport_warmup_discard'] = discard
         stamp['native_libraries'] = self.libraries
@@ -101,11 +107,7 @@ class Study:
         cached = cached_result(prefix, stamp)
         if cached is not None:
             return cached
-        # Other clients must not be interrupted. Refuse contaminated final comparisons.
-        clients = subprocess.run(['nvidia-smi', '--query-compute-apps=pid,process_name', '--format=csv,noheader'],
-                                 text=True, capture_output=True, check=True).stdout.strip()
-        if clients:
-            raise RuntimeError(f'GPU has another compute client; retry later: {clients}')
+        # study.run waits for an empty GPU and records process monitoring.
         if archive_attempt(prefix, self.records):
             (self.root / 'runs.json').write_text(json.dumps(self.records, indent=2))
         before = subprocess.check_output(['nvidia-smi', '-q'], text=True)
@@ -123,7 +125,7 @@ class Study:
         print(label, rc, flush=True)
         if rc or sample_failure:
             raise RuntimeError(f'Failed condition: {prefix}.log')
-        stamp['artifacts'] = {suffix: file_hash(Path(str(prefix) + suffix)) for suffix in ['.json', '.csv']}
+        stamp['artifacts'] = {suffix: file_hash(Path(str(prefix) + suffix)) for suffix in ['.json', '.csv', '.gpu-processes.json']}
         stamp_path.write_text(json.dumps(stamp, indent=2))
         return read(result_path)
 

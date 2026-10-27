@@ -1,4 +1,6 @@
 """Bounded regression for CPU-once export and CPU-free checked GPU replay."""
+from bench.gpu_guard import run_exclusive
+
 import argparse
 import json
 import shutil
@@ -22,7 +24,7 @@ def main():
 
     def run(command, label, should_pass=True):
         with (args.output / f'{label}.log').open('w') as log:
-            rc = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT).returncode
+            rc = run_exclusive(command, evidence=args.output / f'{label}.gpu-processes.json', stdout=log, stderr=subprocess.STDOUT).returncode
         report.append(dict(name=label, command=command, returncode=rc, expected_success=should_pass))
         (args.output / 'summary.json').write_text(json.dumps(report, indent=2))
         if (rc == 0) != should_pass:

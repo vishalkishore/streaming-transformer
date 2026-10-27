@@ -14,7 +14,7 @@ This is a compact-model inference systems project. Random, frozen weights are su
 
 ## 2. Objective and success criteria
 
-Answer one question: can persistent execution reduce the latency of a complete streaming transformer on an RTX A6000 compared with a strong CUDA Graph implementation?
+Answer one question: can persistent execution reduce the latency of a complete streaming transformer on the NVIDIA RTX PRO 5000 Blackwell (SM120) compared with a strong CUDA Graph implementation?
 
 Deliver:
 
@@ -30,7 +30,7 @@ Persistence and transformer attention are existing ideas. Claim ownership of the
 
 ## 3. Fixed initial scope
 
-Use one of the available RTX A6000 48 GB GPUs. Compile explicitly for SM86. The second GPU may run independent experiments or training; do not split this small model across GPUs.
+Use one NVIDIA RTX PRO 5000 Blackwell 48 GB GPU. Compile explicitly for SM120 with the installed driver-compatible CUDA 13 toolkit. Keep benchmark GPU execution exclusive and CPU baseline runs separate. Retain A6000/A5000 SM86 records as historical diagnostics; do not split this small model across GPUs.
 
 The core workload is one ordered event stream. Every input requires one output and advances model state. There is no wait to collect a batch. This is a defined streaming workload, not an assertion that Jump uses batch size one. Test sustained and bursty input arrivals so the workload is not artificially restricted to low traffic.
 
@@ -178,9 +178,9 @@ Create the build, hardware probe and benchmark metadata schema. Record CPU model
 
 Implement empty launch, graph replay, pinned-transfer and mailbox ping-pong measurements. Validate request IDs and payload checksums across at least 100,000 exchanges. Save latency samples, CPU usage and the chosen protocol.
 
-Run the initial noise-control comparison and direction/backoff transport tests described in section 9. As optional external calibration, spend at most half a day attempting NVIDIA's standalone ping-pong and small-model examples on SM86, if they build with the available stack. Record the exact commit and timing boundaries. This is an external reference experiment, not an LSTM backend in this project, and cannot block the transformer milestones. Do not compare different model latencies as if the workloads were identical.
+Run the initial noise-control comparison and direction/backoff transport tests described in section 9. As optional external calibration, spend at most half a day attempting NVIDIA's standalone ping-pong and small-model examples on SM120, if they build with the available stack without introducing architecture-specific dependencies outside this scope. Record the exact commit and timing boundaries. This is an external reference experiment, not an LSTM backend in this project, and cannot block the transformer milestones. Do not compare different model latencies as if the workloads were identical.
 
-Exit: a supported transport works reliably, and its costs are understood. The A6000 does not require Hopper thread-block clusters.
+Exit: a supported transport works reliably, and its costs are understood. This runtime uses conventional and cooperative CUDA on SM120; Hopper thread-block clusters are not required.
 
 ### M1 — Model contract and oracle: weeks 2–3
 
@@ -344,13 +344,13 @@ These references inform the design; none establishes that Jump uses this runtime
 
 - [CUDA Graphs](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/cuda-graphs.html): graph execution and reduced submission overhead.
 - [Cooperative Groups](https://docs.nvidia.com/cuda/cuda-programming-guide/04-special-topics/cooperative-groups.html) and [execution-control requirements](https://docs.nvidia.com/cuda/cuda-runtime-api/cuda_runtime_api/group__CUDART__EXECUTION.html): grid synchronization and legal cooperative launch sizing.
-- [Ampere tuning guide](https://docs.nvidia.com/cuda/ampere-tuning-guide/index.html): SM86 resource constraints and compilation target.
+- [Blackwell tuning guide](https://docs.nvidia.com/cuda/blackwell-tuning-guide/index.html): architecture guidance; query actual SM120 resource attributes and occupancy rather than assuming data-center Blackwell limits. The [Ampere guide](https://docs.nvidia.com/cuda/ampere-tuning-guide/index.html) applies to historical SM86 results.
 - [Nsight Compute profiling guide](https://docs.nvidia.com/nsight-compute/ProfilingGuide/): application replay for host-dependent kernels, clock/cache controls and profiling limits.
 - [CUDA runtime device attributes](https://docs.nvidia.com/cuda/cuda-runtime-api/cuda_runtime_api/group__CUDART__DEVICE.html): query the execution-timeout attribute rather than relying on display attachment alone.
 - [CCCL memory model](https://nvidia.github.io/cccl/unstable/libcudacxx/extended_api/memory_model.html) and [atomic_ref](https://nvidia.github.io/cccl/unstable/libcudacxx/extended_api/synchronization_primitives/atomic_ref.html): allocation/scope/operation guarantees for communication.
 - [NVIDIA low-latency reference](https://github.com/NVIDIA/dl-lowlat-infer): communication and measurement patterns. The model is LSTM-specific; use it as a reference, not as a transformer implementation.
 - [NVIDIA capital-markets post](https://developer.nvidia.com/blog/achieving-single-digit-microsecond-latency-inference-for-capital-markets/): timing-boundary context; its reported precomputation is excluded from critical-path timing.
-- [Cohere megakernel](https://github.com/cohere-ai/cohere-megakernel) and [design write-up](https://cohere.com/blog/megakernels): complete-transformer task scheduling. Its implementation is H100-specific, not an A6000 starting binary.
+- [Cohere megakernel](https://github.com/cohere-ai/cohere-megakernel) and [design write-up](https://cohere.com/blog/megakernels): complete-transformer task scheduling. Its implementation is H100-specific, not an SM120 starting binary.
 - [mann-uofg/infer](https://github.com/mann-uofg/infer): an example of numerical checks, raw results, profiling and limitations.
 - [Jump AI](https://www.jumptrading.com/ai-ml): relevance of real-time inference and hardware constraints; not evidence of specific internal model or kernel choices.
 

@@ -1,5 +1,16 @@
 # Measurement contract
 
+GPU runs must start with no other compute or graphics clients. The shared
+`bench/gpu_guard.py` guard waits for this condition, serializes this workspace's
+launchers and samples process visibility every second while a child runs.
+`.gpu-processes.json` sidecars record the initial check, sample count and any
+foreign clients or query failures; either invalidates the run. Only the launched
+process and its descendants are allowed. Monitoring cannot detect every
+short-lived process between samples, so a clean record is sampled evidence,
+not proof of uninterrupted exclusivity. Never terminate someone else's workload.
+Benchmark variants use the same monitoring cadence. Old runs without this
+evidence remain historical diagnostics, not newly verified exclusive runs.
+
 The model consumes a normalized FP32 feature vector and produces one FP32 score. This is not exchange-feed-to-decision latency. Loading, allocation and compilation are outside steady-state samples and reported as startup costs. GPU performance paths compute no CPU model oracle; CPU baselines and GPU conditions run serially.
 
 | Measurement | Start | End | Included |

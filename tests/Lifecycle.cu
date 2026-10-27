@@ -90,30 +90,49 @@ namespace {
     }
   }
 
+  TEST(Attention, RejectUnsupportedShapes){
+    if(!hasGpu()){ GTEST_SKIP() << "No CUDA GPU"; }
+    for(bool largeWindow : {false, true}){
+      Stream::Model model("fixtures/small-fp32");
+      if(largeWindow){
+        model.config.window = 513;
+      }else{
+        model.config.heads = 1;
+      }
+      Stream::RuntimeOptions options;
+      options.fusedAttention = true;
+      EXPECT_THROW({ Stream::Runtime runtime(model, options); }, std::runtime_error);
+    }
+  }
+
   TEST(Diagnostic, CudaSnapshotsPreserveExecution){
     if(!hasGpu()){ GTEST_SKIP() << "No CUDA GPU"; }
-    Stream::Model model("fixtures/main-mixed");
-    Stream::RuntimeOptions options;
-    options.backend = Stream::Backend::CUDA;
-    options.blocks = 4;
-    Stream::Runtime runtime(model, options);
-    auto bytes = Stream::readBytes("fixtures/main-mixed/trace.bin");
-    std::vector<float> event(model.config.features), scores;
-    for(int i = 0; i < 12; i++){
-      std::memcpy(event.data(), bytes.data() + i * event.size() * sizeof(float), event.size() * sizeof(float));
-      scores.push_back(runtime.step(event.data()));
+    for(bool fused : {false, true}){
+      Stream::Model model("fixtures/main-mixed");
+      Stream::RuntimeOptions options;
+      options.backend = Stream::Backend::CUDA;
+      options.blocks = 4;
+      options.fusedAttention = fused;
+      Stream::Runtime runtime(model, options);
+      auto bytes = Stream::readBytes("fixtures/main-mixed/trace.bin");
+      std::vector<float> event(model.config.features), scores;
+      for(int i = 0; i < 12; i++){
+        std::memcpy(event.data(), bytes.data() + i * event.size() * sizeof(float), event.size() * sizeof(float));
+        scores.push_back(runtime.step(event.data()));
+      }
+      auto state = runtime.snapshot();
+      runtime.reset();
+      for(int i = 0; i < 12; i++){
+        std::memcpy(event.data(), bytes.data() + i * event.size() * sizeof(float), event.size() * sizeof(float));
+        auto trace = runtime.traceStep(event.data());
+        ASSERT_EQ(trace.at("layers.0.attention").size(), model.config.width);
+        ASSERT_EQ(scores[i], trace.at("score.linear")[0]);
+      }
+      auto traced = runtime.snapshot();
+      EXPECT_EQ(state.position, traced.position);
+      EXPECT_EQ(state.keys, traced.keys);
+      EXPECT_EQ(state.values, traced.values);
+      EXPECT_EQ(state.hidden, traced.hidden);
     }
-    auto state = runtime.snapshot();
-    runtime.reset();
-    for(int i = 0; i < 12; i++){
-      std::memcpy(event.data(), bytes.data() + i * event.size() * sizeof(float), event.size() * sizeof(float));
-      auto trace = runtime.traceStep(event.data());
-      ASSERT_EQ(scores[i], trace.at("score.linear")[0]);
-    }
-    auto traced = runtime.snapshot();
-    EXPECT_EQ(state.position, traced.position);
-    EXPECT_EQ(state.keys, traced.keys);
-    EXPECT_EQ(state.values, traced.values);
-    EXPECT_EQ(state.hidden, traced.hidden);
   }
 }

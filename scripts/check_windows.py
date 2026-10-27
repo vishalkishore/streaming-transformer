@@ -1,4 +1,6 @@
 """Validate cache-shape variants before collecting their performance samples."""
+from bench.gpu_guard import run_exclusive
+
 import itertools
 import json
 import subprocess
@@ -19,7 +21,7 @@ def main():
                        '--blocks', str(blocks), '--mode', 'correctness', '--events', str(3 * window + 9),
                        '--output', str(prefix)]
             with Path(str(prefix) + '.log').open('w') as out:
-                rc = subprocess.run(command, stdout=out, stderr=subprocess.STDOUT).returncode
+                rc = run_exclusive(command, evidence=str(prefix) + '.gpu-processes.json', stdout=out, stderr=subprocess.STDOUT).returncode
             report.append(dict(name=prefix.name, command=command, returncode=rc))
             (output / 'summary.json').write_text(json.dumps(report, indent=2))
             print(prefix.name, rc, flush=True)

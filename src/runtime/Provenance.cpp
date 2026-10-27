@@ -30,7 +30,7 @@ namespace Stream {
       {"git_status", status}, {"git_dirty", !status.empty()},
       {"source_snapshot_boundary", "current source/config/docs at startup; binary hash identifies the actual executable"}};
     std::vector<std::filesystem::path> paths;
-    for(const auto* directory : {"bench", "configs", "deliverables", "include", "reference", "scripts", "src", "tests", "docs"}){
+    for(const auto* directory : {"bench", "configs", "deliverables", "include", "reference", "scripts", "src", "tests", "docs", "third_party"}){
       if(!std::filesystem::exists(directory)){ continue; }
       for(const auto& entry : std::filesystem::recursive_directory_iterator(directory)){
         auto path = entry.path();
